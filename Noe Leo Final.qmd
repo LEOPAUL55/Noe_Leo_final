@@ -4,3 +4,344 @@ author: "Léo-Paul Garelli and Noé Mansuy"
 format: pdf
 ---
 let's get started
+
+```{r}
+#| message: false
+here::i_am("Noe_Leo_Final.Rproj")
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(vroom)
+library(data.table)
+library(readr)
+```
+
+# Price per square meter
+```{r}
+ppsm_2016 <- read_delim(here("data","price per square meter","dvf2016.csv"),
+    na = "s")
+  
+ppsm_2017 <- read_delim(here("data","price per square meter","dvf2017.csv"),
+    na = "s")
+
+ppsm_2018 <- read_delim(here("data","price per square meter","dvf2018.csv"),
+    na = "s")
+
+ppsm_2019 <- read_delim(here("data","price per square meter","dvf2019.csv"),
+    na = "s")
+
+ppsm_2020 <- read_delim(here("data","price per square meter","dvf2020.csv"),
+    na = "s")
+
+ppsm_2021 <- read_delim(here("data","price per square meter","dvf2021.csv"),
+    na = "s")
+```
+# Poverty
+```{r}
+pov2016 <- read_delim(here("data","poverty","pov2016.csv"),
+                      na = "s") 
+pov2017 <- read_delim(here("data","poverty","pov2017.csv"),
+                      na = "s")
+pov2018 <- read_delim(here("data","poverty","pov2018.csv"),
+                      na = "s")
+pov2019 <- read_delim(here("data","poverty","pov2019.csv"),
+                      na = "s")
+pov2020 <- read_delim(here("data","poverty","pov2020.csv"),
+                      na = "s")
+pov2021 <- read_delim(here("data","poverty","pov2021.csv"),
+                      na = "s") 
+```
+    
+```{r}
+pov2016_1 <- pov2016 |>
+  select(
+    -NBMENFISC16,
+    -NBPERSMENFISC16,
+    -PIMP16,
+    -TP60AGE116,
+    -TP60AGE216,
+    -TP60AGE316,
+    -TP60AGE416,
+    -TP60AGE516,
+    -TP60AGE616,
+    -TP60TOL116,
+    -TP60TOL216,
+    -PACT16,
+    -PTSA16,
+    -PCHO16,
+    -PBEN16,
+    -PPEN16,
+    -PPAT16,
+    -PPSOC16,
+    -PPFAM16,
+    -PPMINI16,
+    -PPLOGT16,
+    -PIMPOT16,
+    -RD16)|>
+  rename(
+    MED = MED16,
+    TP60 = TP6016,
+    D1 = D116,
+    D9 = D916
+  )
+
+pov2017_1 <- pov2017 |>
+  select(
+    -NBMENFISC17,
+    -NBPERSMENFISC17,
+    -PIMP17,
+    -TP60AGE117,
+    -TP60AGE217,
+    -TP60AGE317,
+    -TP60AGE417,
+    -TP60AGE517,
+    -TP60AGE617,
+    -TP60TOL117,
+    -TP60TOL217,
+    -PACT17,
+    -PTSA17,
+    -PCHO17,
+    -PBEN17,
+    -PPEN17,
+    -PPAT17,
+    -PPSOC17,
+    -PPFAM17,
+    -PPMINI17,
+    -PPLOGT17,
+    -PIMPOT17,
+    -RD17 )|>
+  rename(
+    MED = MED17,
+    TP60 = TP6017,
+    D1 = D117,
+    D9 = D917
+  ) 
+
+pov2018_1 <- pov2018 |>
+  select(
+    -DEC_PIMP18,
+    -DEC_PACT18,
+    -DEC_PTSA18,
+    -DEC_PCHO18,
+    -DEC_PBEN18,
+    -DEC_PPEN18,
+    -DEC_PAUT18,
+    -DEC_NOTE18,
+    -DEC_Q118,
+    -DEC_Q318,
+    -DEC_EQ18,
+    -DEC_D218,
+    -DEC_D318,
+    -DEC_D418,
+    -DEC_D618,
+    -DEC_D718,
+    -DEC_D818,
+    -DEC_RD18,
+    -DEC_S80S2018,
+    -DEC_GI18
+  )|>
+  rename(
+    MED = DEC_MED18,
+    TP60 = DEC_TP6018,
+    D1 = DEC_D118,
+    D9 = DEC_D918
+  )|>
+  mutate(CODGEO = substr(IRIS, 1, 5))|>
+  select(
+    -IRIS
+  )
+
+pov2019_1 <- pov2019 |>
+  select(
+    -NBMENFISC19,
+    -NBPERSMENFISC19,
+    -PIMP19,
+    -TP60AGE119,
+    -TP60AGE219,
+    -TP60AGE319,
+    -TP60AGE419,
+    -TP60AGE519,
+    -TP60AGE619,
+    -TP60TOL119,
+    -TP60TOL219,
+    -PACT19,
+    -PTSA19,
+    -PCHO19,
+    -PBEN19,
+    -PPEN19,
+    -PPAT19,
+    -PPSOC19,
+    -PPFAM19,
+    -PPMINI19,
+    -PPLOGT19,
+    -PIMPOT19,
+    -RD19)|>
+  rename(
+    MED = MED19,
+    TP60 = TP6019,
+    D1 = D119,
+    D9 = D919
+  )
+
+pov2020_1 <- pov2020 |>
+  select(
+    -PIMP20,
+    -TP60AGE120,
+    -TP60AGE220,
+    -TP60AGE320,
+    -TP60AGE420,
+    -TP60AGE520,
+    -TP60AGE620,
+    -TP60TOL120,
+    -TP60TOL220,
+    -PACT20,
+    -PTSA20,
+    -PCHO20,
+    -PBEN20,
+    -PPEN20,
+    -PPAT20,
+    -PPSOC20,
+    -PPFAM20,
+    -PPMINI20,
+    -PPLOGT20,
+    -PIMPOT20,
+    -RD20,
+    -NBMENFISC20,
+    -NBPERSMENFISC20)|>
+  rename(
+    MED = MED20,
+    TP60 = TP6020,
+    D1 = D120,
+    D9 = D920
+  )
+
+pov2021_1 <- pov2021 |>
+  select(
+    -`Rapport interdécile (D9/D1) du niveau de vie`,
+    -`Part des ménages imposés (en %)`,
+    -`Nombre de ménages`,
+    -`Nombre de personnes`,
+    -`Nombre d’unités de consommation`,
+    -`Part des revenus d’activité dans le revenu disponible (en %)`,
+    -`Part des revenus des activités non salariées dans le revenu disponible (en %)`,
+    -`Part des salaires dans le revenu disponible (en %)`,
+    -`Part des indemnités de chômage dans le revenu disponible (en %)`,
+    -`Part de l’ensemble des prestations sociales dans le revenu disponible (en %)`,
+    -`Part des prestations familiales dans le revenu disponible (en %)`,
+    -`Part des prestations logement dans le revenu disponible (en %)`,
+    -`Part des minimas sociaux dans le revenu disponible (en %)`,
+    -`Part des pensions, retraites et rentes dans le revenu disponible (en %)`,
+    -`Part des revenus du patrimoine et autres revenus dans le revenu disponible (en %)`,
+    -`Part des impôts directs dans le revenu disponible (en %)`
+  ) |>
+  rename(
+    CODGEO = GEO,
+    MED = `Niveau de vie médian (en euros)`,
+    TP60 = `Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie`,
+    D1 = `1er décile du niveau de vie (en euros)`,
+    D9 = `9e décile du niveau de vie (en euros)`
+  )
+```
+```{r}
+name <- pov2016_1 |>
+  select(CODGEO, LIBGEO)
+```
+
+
+# Criminality
+
+```{r}
+crime_raw <- read.csv(here("data_criminality.csv"))
+```
+
+```{r}
+crime_1 <- read_delim(here( "data_criminality.csv"),
+                      delim = ";",
+                      locale = locale(decimal_mark = ","),
+                      col_types = cols(
+                        annee = col_integer(), 
+                        nombre = col_integer()))
+
+spec(crime_1)
+```
+```{r}
+crime_2 <- crime_1 |>
+  select(-est_diffuse, 
+         -taux_pour_mille,
+         -insee_pop_millesime,
+         -insee_log_millesime,
+         -insee_log,
+         -insee_log_millesime,
+         -complement_info_nombre,
+         -complement_info_taux)
+```
+```{r}
+crime_3 <- crime_2 |>
+  pivot_wider(
+    names_from = indicateur,
+    values_from = nombre
+  )
+```
+```{r}
+crime_4 <- crime_3 |>
+  filter(insee_pop>=5000) |>
+  mutate(total_crimes = rowSums(across(`Violences physiques intrafamiliales`:`Escroqueries et fraudes aux moyens de paiement`), na.rm = TRUE)) |>
+  rename(
+    CODGEO = CODGEO_2025
+  )
+```
+```{r}
+crime_2016 <- crime_4 |>
+  filter(annee == "2016")
+```
+```{r}
+crime_2017 <- crime_4 |>
+  filter(annee == "2017")
+```
+```{r}
+crime_2018 <- crime_4 |>
+  filter(annee == "2018")
+```
+```{r}
+crime_2019 <- crime_4 |>
+  filter(annee == "2019")
+```
+```{r}
+crime_2020 <- crime_4 |>
+  filter(annee == "2020")
+```
+```{r}
+crime_2021 <- crime_4 |>
+  filter(annee == "2021")
+```
+
+## Crime + poverty
+```{r}
+cpov_2016 <- crime_2016|>
+  left_join(pov2016_1, by = "CODGEO")
+```
+```{r}
+cpov_2017 <- crime_2017|>
+  left_join(name, by = "CODGEO")|>
+  left_join(pov2017_1, by = "CODGEO")
+```
+```{r}
+cpov_2018 <- crime_2018|>
+  left_join(name, by = "CODGEO")|>
+  left_join(pov2018_1, by = "CODGEO")
+```
+```{r}
+cpov_2019 <- crime_2019|>
+  left_join(name, by = "CODGEO")|>
+  left_join(pov2019_1, by = "CODGEO")
+```
+```{r}
+cpov_2020 <- crime_2020|>
+  left_join(name, by = "CODGEO")|>
+  left_join(pov2020_1, by = "CODGEO")
+```
+```{r}
+cpov_2021 <- crime_2021|>
+  left_join(pov2021_1, by = "CODGEO")
+```
