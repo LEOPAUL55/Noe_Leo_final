@@ -1,0 +1,6 @@
+---
+title: "Noe Leo Final"
+author: "Léo-Paul Garelli and Noé Mansuy"
+format: pdf
+---
+let's get started
