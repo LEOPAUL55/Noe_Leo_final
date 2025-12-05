@@ -3,7 +3,7 @@ title: "Noe Leo Final"
 author: "Léo-Paul Garelli and Noé Mansuy"
 format: pdf
 ---
-let's get started
+Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
 
 ```{r}
 #| message: false
@@ -17,7 +17,26 @@ library(data.table)
 library(readr)
 ```
 
-# Price per square meter
+# population 2018
+
+Because the 2018 data for incomes is by IRIS code and not by GEO code, we need to ponderate each mean of the 2018 IRIS codes belonging to the same city by their 2018 population in order to find the true values we're looking for.
+
+```{r}
+pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
+    na = "s") |>
+  select(IRIS,P18_POP)
+    
+```
+
+
+
+# Real estate prices
+
+Source : https://www.data.gouv.fr/datasets/indicateurs-immobiliers-par-commune-et-par-annee-prix-et-volumes-sur-la-periode-2014-2024
+
+This is a collection of various variables on residential housing market at the city level between 2014 and 2024. What is interesting for us is the mean price by square meter of the goods that have been sold each year. This was published by Boris Mericksay
+
+
 ```{r}
 ppsm_2016 <- read_delim(here("data","price per square meter","dvf2016.csv"),
     na = "s")
@@ -38,6 +57,21 @@ ppsm_2021 <- read_delim(here("data","price per square meter","dvf2021.csv"),
     na = "s")
 ```
 # Poverty
+
+sources : 
+
+- 2016, 2017, 2018 : https://www.data.gouv.fr/datasets/revenus-et-pauvrete-des-menages-aux-niveaux-national-et-local-revenus-localises-sociaux-et-fiscaux/
+
+- 2019 : https://www.insee.fr/fr/statistiques/6036902?sommaire=6036904
+
+- 2020 : https://www.insee.fr/fr/statistiques/6692392?sommaire=6692394
+
+- 2021 : https://www.insee.fr/fr/statistiques/7756729?sommaire=7756859
+
+These are collections of indicators of disposable income in France, at the city level, between 2016 and 2021. These are made by the Insee.
+
+
+
 ```{r}
 pov2016 <- read_delim(here("data","poverty","pov2016.csv"),
                       na = "s") 
@@ -56,29 +90,12 @@ pov2021 <- read_delim(here("data","poverty","pov2021.csv"),
 ```{r}
 pov2016_1 <- pov2016 |>
   select(
-    -NBMENFISC16,
-    -NBPERSMENFISC16,
-    -PIMP16,
-    -TP60AGE116,
-    -TP60AGE216,
-    -TP60AGE316,
-    -TP60AGE416,
-    -TP60AGE516,
-    -TP60AGE616,
-    -TP60TOL116,
-    -TP60TOL216,
-    -PACT16,
-    -PTSA16,
-    -PCHO16,
-    -PBEN16,
-    -PPEN16,
-    -PPAT16,
-    -PPSOC16,
-    -PPFAM16,
-    -PPMINI16,
-    -PPLOGT16,
-    -PIMPOT16,
-    -RD16)|>
+    MED16,
+    TP6016,
+    D916,
+    D116,
+    CODGEO,
+    LIBGEO)|>
   rename(
     MED = MED16,
     TP60 = TP6016,
@@ -88,29 +105,12 @@ pov2016_1 <- pov2016 |>
 
 pov2017_1 <- pov2017 |>
   select(
-    -NBMENFISC17,
-    -NBPERSMENFISC17,
-    -PIMP17,
-    -TP60AGE117,
-    -TP60AGE217,
-    -TP60AGE317,
-    -TP60AGE417,
-    -TP60AGE517,
-    -TP60AGE617,
-    -TP60TOL117,
-    -TP60TOL217,
-    -PACT17,
-    -PTSA17,
-    -PCHO17,
-    -PBEN17,
-    -PPEN17,
-    -PPAT17,
-    -PPSOC17,
-    -PPFAM17,
-    -PPMINI17,
-    -PPLOGT17,
-    -PIMPOT17,
-    -RD17 )|>
+    MED17,
+    TP6017,
+    D917,
+    D117,
+    CODGEO,
+    )|>
   rename(
     MED = MED17,
     TP60 = TP6017,
@@ -120,63 +120,26 @@ pov2017_1 <- pov2017 |>
 
 pov2018_1 <- pov2018 |>
   select(
-    -DEC_PIMP18,
-    -DEC_PACT18,
-    -DEC_PTSA18,
-    -DEC_PCHO18,
-    -DEC_PBEN18,
-    -DEC_PPEN18,
-    -DEC_PAUT18,
-    -DEC_NOTE18,
-    -DEC_Q118,
-    -DEC_Q318,
-    -DEC_EQ18,
-    -DEC_D218,
-    -DEC_D318,
-    -DEC_D418,
-    -DEC_D618,
-    -DEC_D718,
-    -DEC_D818,
-    -DEC_RD18,
-    -DEC_S80S2018,
-    -DEC_GI18
+    DEC_MED18,
+    DEC_TP6018,
+    DEC_D918,
+    DEC_D118,
+    IRIS
   )|>
   rename(
     MED = DEC_MED18,
     TP60 = DEC_TP6018,
     D1 = DEC_D118,
     D9 = DEC_D918
-  )|>
-  mutate(CODGEO = substr(IRIS, 1, 5))|>
-  select(
-    -IRIS
   )
 
 pov2019_1 <- pov2019 |>
   select(
-    -NBMENFISC19,
-    -NBPERSMENFISC19,
-    -PIMP19,
-    -TP60AGE119,
-    -TP60AGE219,
-    -TP60AGE319,
-    -TP60AGE419,
-    -TP60AGE519,
-    -TP60AGE619,
-    -TP60TOL119,
-    -TP60TOL219,
-    -PACT19,
-    -PTSA19,
-    -PCHO19,
-    -PBEN19,
-    -PPEN19,
-    -PPAT19,
-    -PPSOC19,
-    -PPFAM19,
-    -PPMINI19,
-    -PPLOGT19,
-    -PIMPOT19,
-    -RD19)|>
+    MED19,
+    TP6019,
+    D919,
+    D119,
+    CODGEO)|>
   rename(
     MED = MED19,
     TP60 = TP6019,
@@ -186,29 +149,11 @@ pov2019_1 <- pov2019 |>
 
 pov2020_1 <- pov2020 |>
   select(
-    -PIMP20,
-    -TP60AGE120,
-    -TP60AGE220,
-    -TP60AGE320,
-    -TP60AGE420,
-    -TP60AGE520,
-    -TP60AGE620,
-    -TP60TOL120,
-    -TP60TOL220,
-    -PACT20,
-    -PTSA20,
-    -PCHO20,
-    -PBEN20,
-    -PPEN20,
-    -PPAT20,
-    -PPSOC20,
-    -PPFAM20,
-    -PPMINI20,
-    -PPLOGT20,
-    -PIMPOT20,
-    -RD20,
-    -NBMENFISC20,
-    -NBPERSMENFISC20)|>
+    MED20,
+    TP6020,
+    D920,
+    D120,
+    CODGEO)|>
   rename(
     MED = MED20,
     TP60 = TP6020,
@@ -218,23 +163,12 @@ pov2020_1 <- pov2020 |>
 
 pov2021_1 <- pov2021 |>
   select(
-    -`Rapport interdécile (D9/D1) du niveau de vie`,
-    -`Part des ménages imposés (en %)`,
-    -`Nombre de ménages`,
-    -`Nombre de personnes`,
-    -`Nombre d’unités de consommation`,
-    -`Part des revenus d’activité dans le revenu disponible (en %)`,
-    -`Part des revenus des activités non salariées dans le revenu disponible (en %)`,
-    -`Part des salaires dans le revenu disponible (en %)`,
-    -`Part des indemnités de chômage dans le revenu disponible (en %)`,
-    -`Part de l’ensemble des prestations sociales dans le revenu disponible (en %)`,
-    -`Part des prestations familiales dans le revenu disponible (en %)`,
-    -`Part des prestations logement dans le revenu disponible (en %)`,
-    -`Part des minimas sociaux dans le revenu disponible (en %)`,
-    -`Part des pensions, retraites et rentes dans le revenu disponible (en %)`,
-    -`Part des revenus du patrimoine et autres revenus dans le revenu disponible (en %)`,
-    -`Part des impôts directs dans le revenu disponible (en %)`
-  ) |>
+    GEO,
+    `Niveau de vie médian (en euros)`,
+    `Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie`,
+    `1er décile du niveau de vie (en euros)`,
+    `9e décile du niveau de vie (en euros)`
+   ) |>
   rename(
     CODGEO = GEO,
     MED = `Niveau de vie médian (en euros)`,
@@ -244,12 +178,59 @@ pov2021_1 <- pov2021 |>
   )
 ```
 ```{r}
-name <- pov2016_1 |>
+names <- pov2016_1 |>
   select(CODGEO, LIBGEO)
 ```
 
+```{r}
 
-# Criminality
+pov2018_1 <- pov2018_1 |>
+  left_join(pop2018_IRIS,by = "IRIS")
+
+cols_to_weight <- c("MED", "TP60", "D9", "D1")
+
+result <- pov2018_1 %>%
+  group_by() %>%
+  summarize(
+    # Apply weighted.mean to each column in cols_to_weight
+    across(all_of(cols_to_weight), 
+           ~ weighted.mean(., P18_POP, na.rm = TRUE),
+           .names = "{.col}_weighted"),
+    
+    # Add total population
+    Total_POP = sum(P18_POP, na.rm = TRUE)
+  ) %>%
+  ungroup()
+```
+
+
+```{r}
+result <- pov2018_1 %>%
+  mutate(CODGEO = substr(IRIS, 1, 5)) %>%
+  
+  group_by(CODGEO) %>%
+  
+  summarize(
+    MED = weighted.mean(MED, P18_POP, na.rm = TRUE),
+    TP60 = weighted.mean(TP60, P18_POP, na.rm = TRUE),
+    D9 = weighted.mean(D9, P18_POP, na.rm = TRUE),
+    D1 = weighted.mean(D1, P18_POP, na.rm = TRUE),
+    
+    P18_POP = sum(P18_POP, na.rm = TRUE),  # Renommer si besoin
+
+    
+    .groups = 'drop'
+  ) |>
+  select(-P18_POP)
+  
+```
+
+
+# Delinquency
+
+Source : https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/
+
+this is a database of all the crimes and offences (except traffic ofences) at the city level in France, published by French Police Force.
 
 ```{r}
 crime_raw <- read.csv(here("data_criminality.csv"))
@@ -316,32 +297,147 @@ crime_2021 <- crime_4 |>
   filter(annee == "2021")
 ```
 
-## Crime + poverty
+
+
+## Merging and grouping crimes per year per per city
 ```{r}
 cpov_2016 <- crime_2016|>
   left_join(pov2016_1, by = "CODGEO")
+
+cols_to_sum <- names(cpov_2016)[5:19]
+
+cpov_2016 <- cpov_2016 %>%
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
+  
+
 ```
+
 ```{r}
+name <- pov2016_1 |>
+  select(CODGEO, LIBGEO)
+
 cpov_2017 <- crime_2017|>
   left_join(name, by = "CODGEO")|>
   left_join(pov2017_1, by = "CODGEO")
+
+cpov_2017 <- cpov_2017 %>%
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
 ```{r}
 cpov_2018 <- crime_2018|>
   left_join(name, by = "CODGEO")|>
-  left_join(pov2018_1, by = "CODGEO")
+  left_join(result, by = "CODGEO")
+cpov_2018 <- cpov_2018 %>%
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
 ```{r}
 cpov_2019 <- crime_2019|>
   left_join(name, by = "CODGEO")|>
   left_join(pov2019_1, by = "CODGEO")
+cpov_2019 <- cpov_2019 %>%
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
 ```{r}
 cpov_2020 <- crime_2020|>
   left_join(name, by = "CODGEO")|>
   left_join(pov2020_1, by = "CODGEO")
+cpov_2020 <- cpov_2020 %>%
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
 ```{r}
 cpov_2021 <- crime_2021|>
   left_join(pov2021_1, by = "CODGEO")
+cpov_2021 <- cpov_2021 %>%
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1) %>%
+  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
+
+## Selecting cities present in the 2018 data 
+```{r}
+cities_of_interest <- unique(result$CODGEO)
+
+cpov_2016 <- cpov_2016 |>
+  filter(CODGEO %in% cities_of_interest)
+cpov_2017 <- cpov_2017 |>
+  filter(CODGEO %in% cities_of_interest)
+cpov_2018 <- cpov_2018 |>
+  filter(CODGEO %in% cities_of_interest)
+cpov_2019 <- cpov_2019 |>
+  filter(CODGEO %in% cities_of_interest)
+cpov_2020 <- cpov_2020 |>
+  filter(CODGEO %in% cities_of_interest)
+cpov_2021 <- cpov_2021 |>
+  filter(CODGEO %in% cities_of_interest)
+```
+we now have data on criminality and poverty for each year betweem 2016 and 2021
+
+Now we have to clean and add to the rest the real estate prices data :
+
+```{r}
+ppsm_2016 <- ppsm_2016 |> 
+  select(
+    INSEE_COM,
+    Prixm2Moyen
+  ) |>
+  rename(CODGEO = INSEE_COM)
+
+ppsm_2017 <- ppsm_2017 |> 
+  select(
+    INSEE_COM,
+    Prixm2Moyen
+  ) |>
+  rename(CODGEO = INSEE_COM)
+
+ppsm_2018 <- ppsm_2018 |> 
+  select(
+    INSEE_COM,
+    Prixm2Moyen
+  ) |>
+  rename(CODGEO = INSEE_COM)
+
+ppsm_2019 <- ppsm_2019 |> 
+  select(
+    INSEE_COM,
+    Prixm2Moyen
+  ) |>
+  rename(CODGEO = INSEE_COM)
+
+ppsm_2020 <- ppsm_2020 |> 
+  select(
+    INSEE_COM,
+    Prixm2Moyen
+  ) |>
+  rename(CODGEO = INSEE_COM)
+
+ppsm_2021 <- ppsm_2021 |> 
+  select(
+    INSEE_COM,
+    Prixm2Moyen
+  ) |>
+  rename(CODGEO = INSEE_COM)
+```
+```{r}
+data_2016 <- cpov_2016 |>
+  left_join(ppsm_2016, by ="CODGEO" )
+
+data_2017 <- cpov_2017 |>
+  left_join(ppsm_2017, by ="CODGEO" )
+
+data_2018 <- cpov_2018 |>
+  left_join(ppsm_2018, by ="CODGEO" )
+
+data_2019 <- cpov_2019 |>
+  left_join(ppsm_2019, by ="CODGEO" )
+
+data_2020 <- cpov_2020 |>
+  left_join(ppsm_2020, by ="CODGEO" )
+
+data_2021 <- cpov_2021 |>
+  left_join(ppsm_2021, by ="CODGEO" )
+```
+
