@@ -3,6 +3,7 @@ title: "Noe Leo Final"
 author: "Léo-Paul Garelli and Noé Mansuy"
 format: html
 ---
+
 Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
 
 ```{r}
@@ -18,13 +19,14 @@ library(readr)
 ```
 
 # Data Loading and Cleaning
+
 ## population 2018
 
 Source : https://www.insee.fr/fr/statistiques/5650720
 
 This is the 2018 population by IRIS code. Made by the INSEE.
 
-Because the 2018 income data is available by IRIS code rather than by GEO code, we need to weight each IRIS-level mean by its 2018 population in order to compute the correct city-level values. Since the 2018 population data at the IRIS level is available for only 994 of the cities included in the other years, we will have to restrict our analysis to these 994 cities. 
+Because the 2018 income data is available by IRIS code rather than by GEO code, we need to weight each IRIS-level mean by its 2018 population in order to compute the correct city-level values. Since the 2018 population data at the IRIS level is available for only 994 of the cities included in the other years, we will have to restrict our analysis to these 994 cities.
 
 ```{r}
 pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
@@ -33,14 +35,11 @@ pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
     
 ```
 
-
-
 ## Real estate prices
 
 Source : https://www.data.gouv.fr/datasets/indicateurs-immobiliers-par-commune-et-par-annee-prix-et-volumes-sur-la-periode-2014-2024
 
 This is a collection of various variables on residential housing market at the city level between 2014 and 2024. What is interesting for us is the mean price by square meter of the goods that have been sold each year. This was published by Boris Mericksay
-
 
 ```{r}
 ppsm_2016 <- read_delim(here("data","price per square meter","dvf2016.csv"),
@@ -61,21 +60,22 @@ ppsm_2020 <- read_delim(here("data","price per square meter","dvf2020.csv"),
 ppsm_2021 <- read_delim(here("data","price per square meter","dvf2021.csv"),
     na = "s")
 ```
+
 ## Poverty
 
-sources : 
+sources :
 
-- 2016, 2017, 2018 : https://www.data.gouv.fr/datasets/revenus-et-pauvrete-des-menages-aux-niveaux-national-et-local-revenus-localises-sociaux-et-fiscaux/
+-   2016, 2017, 2018 : https://www.data.gouv.fr/datasets/revenus-et-pauvrete-des-menages-aux-niveaux-national-et-local-revenus-localises-sociaux-et-fiscaux/
 
-- 2019 : https://www.insee.fr/fr/statistiques/6036902?sommaire=6036904
+-   2019 : https://www.insee.fr/fr/statistiques/6036902?sommaire=6036904
 
-- 2020 : https://www.insee.fr/fr/statistiques/6692392?sommaire=6692394
+-   2020 : https://www.insee.fr/fr/statistiques/6692392?sommaire=6692394
 
-- 2021 : https://www.insee.fr/fr/statistiques/7756729?sommaire=7756859
+-   2021 : https://www.insee.fr/fr/statistiques/7756729?sommaire=7756859
 
 These are collections of indicators of disposable income in France, at the city level, between 2016 and 2021. These are made by the Insee.
 
-
+We will only focus on the poveety rate, the median standard of living, the first and the ninth deciles.
 
 ```{r}
 pov2016 <- read_delim(here("data","poverty","pov2016.csv"),
@@ -91,7 +91,7 @@ pov2020 <- read_delim(here("data","poverty","pov2020.csv"),
 pov2021 <- read_delim(here("data","poverty","pov2021.csv"),
                       na = "s") 
 ```
-    
+
 ```{r}
 pov2016_1 <- pov2016 |>
   select(
@@ -182,6 +182,7 @@ pov2021_1 <- pov2021 |>
     D9 = `9e décile du niveau de vie (en euros)`
   )
 ```
+
 ```{r}
 names <- pov2016_1 |>
   select(CODGEO, LIBGEO)
@@ -209,7 +210,6 @@ result <- pov2018_1 %>%
   ungroup()
 ```
 
-
 ```{r}
 result <- pov2018_1 %>%
   mutate(CODGEO = substr(IRIS, 1, 5)) %>%
@@ -231,7 +231,6 @@ result <- pov2018_1 %>%
   
 ```
 
-
 ## Delinquency
 
 Source : https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/
@@ -239,7 +238,7 @@ Source : https://www.data.gouv.fr/datasets/bases-statistiques-communale-departem
 this is a database of all the crimes and offences (except traffic ofences) at the city level in France, published by French Police Force.
 
 ```{r}
-crime_raw <- read.csv(here("data_criminality.csv"))
+crime_raw <- read.csv(here("data_criminality.csv")) #The file is bigger than 100 MB. To push it on the repository, we downloaded Git LFS
 ```
 
 ```{r}
@@ -252,6 +251,9 @@ crime_1 <- read_delim(here( "data_criminality.csv"),
 
 spec(crime_1)
 ```
+
+We only focus on the type of crimes and the number of crimes per cities bigger than 5000 inhabitants.
+
 ```{r}
 crime_2 <- crime_1 |>
   select(-est_diffuse, 
@@ -263,6 +265,7 @@ crime_2 <- crime_1 |>
          -complement_info_nombre,
          -complement_info_taux)
 ```
+
 ```{r}
 crime_3 <- crime_2 |>
   pivot_wider(
@@ -270,6 +273,7 @@ crime_3 <- crime_2 |>
     values_from = nombre
   )
 ```
+
 ```{r}
 crime_4 <- crime_3 |>
   filter(insee_pop>=5000) |>
@@ -278,42 +282,47 @@ crime_4 <- crime_3 |>
     CODGEO = CODGEO_2025
   )
 ```
+
 ```{r}
 crime_2016 <- crime_4 |>
   filter(annee == "2016")
 ```
+
 ```{r}
 crime_2017 <- crime_4 |>
   filter(annee == "2017")
 ```
+
 ```{r}
 crime_2018 <- crime_4 |>
   filter(annee == "2018")
 ```
+
 ```{r}
 crime_2019 <- crime_4 |>
   filter(annee == "2019")
 ```
+
 ```{r}
 crime_2020 <- crime_4 |>
   filter(annee == "2020")
 ```
+
 ```{r}
 crime_2021 <- crime_4 |>
   filter(annee == "2021")
 ```
 
-
-
 ## Merging and grouping crimes per year per per city
+
 ```{r}
 cpov_2016 <- crime_2016|>
   left_join(pov2016_1, by = "CODGEO")
 
 cols_to_sum <- names(cpov_2016)[5:19]
 
-cpov_2016 <- cpov_2016 %>%
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+cpov_2016 <- cpov_2016 |>
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) |>
   summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
   
 
@@ -327,18 +336,21 @@ cpov_2017 <- crime_2017|>
   left_join(name, by = "CODGEO")|>
   left_join(pov2017_1, by = "CODGEO")
 
-cpov_2017 <- cpov_2017 %>%
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+cpov_2017 <- cpov_2017 |>
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) |>
   summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
+
 ```{r}
 cpov_2018 <- crime_2018|>
   left_join(name, by = "CODGEO")|>
   left_join(result, by = "CODGEO")
-cpov_2018 <- cpov_2018 %>%
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
+
+cpov_2018 <- cpov_2018 |>
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) |>
   summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
+
 ```{r}
 cpov_2019 <- crime_2019|>
   left_join(name, by = "CODGEO")|>
@@ -347,6 +359,7 @@ cpov_2019 <- cpov_2019 %>%
   group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
   summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
+
 ```{r}
 cpov_2020 <- crime_2020|>
   left_join(name, by = "CODGEO")|>
@@ -355,6 +368,7 @@ cpov_2020 <- cpov_2020 %>%
   group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
   summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
+
 ```{r}
 cpov_2021 <- crime_2021|>
   left_join(name, by = "CODGEO")|>
@@ -364,7 +378,8 @@ cpov_2021 <- cpov_2021 %>%
   summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
 
-## Selecting cities present in the 2018 data 
+## Selecting cities present in the 2018 data
+
 ```{r}
 cities_of_interest <- unique(result$CODGEO)
 
@@ -381,6 +396,7 @@ cpov_2020 <- cpov_2020 |>
 cpov_2021 <- cpov_2021 |>
   filter(CODGEO %in% cities_of_interest)
 ```
+
 we now have data on criminality and poverty for each year betweem 2016 and 2021
 
 Now we have to clean and add to the rest the real estate prices data :
@@ -428,6 +444,7 @@ ppsm_2021 <- ppsm_2021 |>
   ) |>
   rename(CODGEO = INSEE_COM)
 ```
+
 ```{r}
 data_2016 <- cpov_2016 |>
   left_join(ppsm_2016, by ="CODGEO" )
@@ -448,7 +465,7 @@ data_2021 <- cpov_2021 |>
   left_join(ppsm_2021, by ="CODGEO" )
 ```
 
--> We have our clean data for all years between 2016 and 2021
+-\> We have our clean data for all years between 2016 and 2021
 
 # Cleaned data tables : summary and most important variables
 
@@ -498,13 +515,13 @@ dataset_info <- data.table(
 knitr::kable(dataset_info)
 
 ```
+
 (Similar for each year)
 
-# Research question : 
+# Research question :
 
 Does the acceleration of the gentrification process in certain French cities with more than 5000 inhabitants (2016-2021) correlate with a decrease in recorded crime in these same municipalities, and is there a displacement effect towards non-gentrified cities?
 
 The first goal will be to make a gentrification index per city with a few variables: square meter price growth, median wage growth, poverty rate growth.
 
 Then we will select the cities with the highest gentrification index (say top 20%) and compare it to the rest of the cities : do we observe a declination in terms of delinquency between the top 20% and the others ? If yes, do we observe a spatial displacement of crime to non-gentrifying areas ?
-
