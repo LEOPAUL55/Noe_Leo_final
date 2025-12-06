@@ -1,7 +1,7 @@
 ---
 title: "Noe Leo Final"
 author: "Léo-Paul Garelli and Noé Mansuy"
-format: pdf
+format: html
 ---
 Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
 
@@ -17,9 +17,14 @@ library(data.table)
 library(readr)
 ```
 
-# population 2018
+# Data Loading and Cleaning
+## population 2018
 
-Because the 2018 data for incomes is by IRIS code and not by GEO code, we need to ponderate each mean of the 2018 IRIS codes belonging to the same city by their 2018 population in order to find the true values we're looking for.
+Source : https://www.insee.fr/fr/statistiques/5650720
+
+This is the 2018 population by IRIS code. Made by the INSEE.
+
+Because the 2018 income data is available by IRIS code rather than by GEO code, we need to weight each IRIS-level mean by its 2018 population in order to compute the correct city-level values. Since the 2018 population data at the IRIS level is available for only 994 of the cities included in the other years, we will have to restrict our analysis to these 994 cities. 
 
 ```{r}
 pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
@@ -30,7 +35,7 @@ pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
 
 
 
-# Real estate prices
+## Real estate prices
 
 Source : https://www.data.gouv.fr/datasets/indicateurs-immobiliers-par-commune-et-par-annee-prix-et-volumes-sur-la-periode-2014-2024
 
@@ -56,7 +61,7 @@ ppsm_2020 <- read_delim(here("data","price per square meter","dvf2020.csv"),
 ppsm_2021 <- read_delim(here("data","price per square meter","dvf2021.csv"),
     na = "s")
 ```
-# Poverty
+## Poverty
 
 sources : 
 
@@ -182,8 +187,9 @@ names <- pov2016_1 |>
   select(CODGEO, LIBGEO)
 ```
 
-```{r}
+Computing poverty rates for 2018 :
 
+```{r}
 pov2018_1 <- pov2018_1 |>
   left_join(pop2018_IRIS,by = "IRIS")
 
@@ -216,7 +222,7 @@ result <- pov2018_1 %>%
     D9 = weighted.mean(D9, P18_POP, na.rm = TRUE),
     D1 = weighted.mean(D1, P18_POP, na.rm = TRUE),
     
-    P18_POP = sum(P18_POP, na.rm = TRUE),  # Renommer si besoin
+    P18_POP = sum(P18_POP, na.rm = TRUE), 
 
     
     .groups = 'drop'
@@ -226,7 +232,7 @@ result <- pov2018_1 %>%
 ```
 
 
-# Delinquency
+## Delinquency
 
 Source : https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/
 
@@ -351,9 +357,10 @@ cpov_2020 <- cpov_2020 %>%
 ```
 ```{r}
 cpov_2021 <- crime_2021|>
+  left_join(name, by = "CODGEO")|>
   left_join(pov2021_1, by = "CODGEO")
 cpov_2021 <- cpov_2021 %>%
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1) %>%
+  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
   summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
 ```
 
@@ -440,4 +447,64 @@ data_2020 <- cpov_2020 |>
 data_2021 <- cpov_2021 |>
   left_join(ppsm_2021, by ="CODGEO" )
 ```
+
+-> We have our clean data for all years between 2016 and 2021
+
+# Cleaned data tables : summary and most important variables
+
+First, we computed the 2018 poverty rates by city, weighting the poverty rates of each geocode by the population of the corresponding IRIS codes. We then kept only the variables of interest for each dataset (poverty rates, crime statistics, and housing prices) and merged them. Now, for each year (2016–2021), we have a dataframe that includes the number of crimes for each crime category (summing crimes corresponding to different units of account when they refer anyways all to a unic crime) for each city with complete poverty rate observations across all years. The dataset also includes the mean price per square meter of real estate transactions in each city for the corresponding year.
+
+```{r}
+descriptions <- c(
+  "Unique code that corresponds to one city. The first two numbers correspond to a department",
+  "The concerned year",
+  "The city's population",
+  "Median income for this year",
+  "Poverty rate (set at less than 60% of the median income)",
+  "9th income decile",
+  "1st income decile",
+  "The city's name",
+  "Number of domestic physical violence reported for the year",
+  "Number of non domestic physical violence reported for the year",
+  "Number of sexual violence reported for the year",
+  "Number of armed robberies reported for the year",
+  "Number of non armed violent robberies reported for the year",
+  "Number of non violent robberies against persons reported for the year",
+  "Number of home invasions reported for the year",
+  "Number of vehicle theft reported for the year",
+  "Number of theft from vehicles reported for the year",
+  "Number of theft of vehicle accessories reported for the year",
+  "Number of willful damage and vandalism reported for the year",
+  "Number of reported drug use for the year",
+  "Number of illegal drug use sanctioned by fixed fine reported for the year",
+  "Number of drug dealing cases reported for the year",
+  "Number of fraud and payment method fraud reported for the year",
+  "Price per square meter of the real estate goods sold for the year"
+)
+
+summary <- data.table(
+  Variable = names(data_2016),
+  Type = sapply(data_2016, class),
+  Description = descriptions
+)
+
+knitr::kable(summary)
+
+dataset_info <- data.table(
+  Info = c("Number of rows", "Number of columns"),
+  Value = c(nrow(data_2016), ncol(data_2016)) 
+)
+
+knitr::kable(dataset_info)
+
+```
+(Similar for each year)
+
+# Research question : 
+
+Does the acceleration of the gentrification process in certain French cities with more than 5000 inhabitants (2016-2021) correlate with a decrease in recorded crime in these same municipalities, and is there a displacement effect towards non-gentrified cities?
+
+The first goal will be to make a gentrification index per city with a few variables: square meter price growth, median wage growth, poverty rate growth.
+
+Then we will select the cities with the highest gentrification index (say top 20%) and compare it to the rest of the cities : do we observe a declination in terms of delinquency between the top 20% and the others ? If yes, do we observe a spatial displacement of crime to non-gentrifying areas ?
 
