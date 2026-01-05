@@ -16,6 +16,7 @@ library(ggplot2)
 library(vroom)
 library(data.table)
 library(readr)
+library(stringr)
 ```
 
 # Data Loading and Cleaning
@@ -41,24 +42,26 @@ Source : https://www.data.gouv.fr/datasets/indicateurs-immobiliers-par-commune-e
 
 This is a collection of various variables on residential housing market at the city level between 2014 and 2024. What is interesting for us is the mean price by square meter of the goods that have been sold each year. This was published by Boris Mericksay
 
+Real‑estate price data are provided as separate yearly CSV files. To improve efficiency and avoid redundant code, we use vroom’s multi‑file loading functionality to read all files simultaneously. The year is extracted from the file name, and city identifiers are harmonized to allow consistent merging with other datasets.
+
 ```{r}
-ppsm_2016 <- read_delim(here("data","price per square meter","dvf2016.csv"),
-    na = "s")
-  
-ppsm_2017 <- read_delim(here("data","price per square meter","dvf2017.csv"),
-    na = "s")
+ppsm_files <- list.files(
+  here("data", "price per square meter"),
+  pattern = "\\.csv$",
+  full.names = TRUE
+)
 
-ppsm_2018 <- read_delim(here("data","price per square meter","dvf2018.csv"),
-    na = "s")
-
-ppsm_2019 <- read_delim(here("data","price per square meter","dvf2019.csv"),
-    na = "s")
-
-ppsm_2020 <- read_delim(here("data","price per square meter","dvf2020.csv"),
-    na = "s")
-
-ppsm_2021 <- read_delim(here("data","price per square meter","dvf2021.csv"),
-    na = "s")
+ppsm <- vroom(
+  ppsm_files,
+  delim = ",",
+  col_select = c(INSEE_COM, Prixm2Moyen),
+  id = "source"
+) |>
+  mutate(
+    year = str_extract(source, "\\d{4}") |> as.integer(),
+    CODGEO = INSEE_COM
+  ) |>
+  select(CODGEO, year, Prixm2Moyen)
 ```
 
 ## Poverty
@@ -75,160 +78,125 @@ sources :
 
 These are collections of indicators of disposable income in France, at the city level, between 2016 and 2021. These are made by the Insee.
 
-We will only focus on the poveety rate, the median standard of living, the first and the ninth deciles.
+We will only focus on the poverty rate, the median standard of living, the first and the ninth deciles.
+
+Poverty data are provided as separate yearly files with heterogeneous structures. Variable names differ across years, and the 2018 data are reported at the IRIS level rather than the commune level. To handle this, we implement a loading strategy that reads each file separately while restricting imports to the variables of interest (years 2016:2021). Poverty indicators are harmonized across years. Non‑numeric values are explicitly converted to missing values during loading, but it won't affect our analysis because this only concerns small cities. The result is a consistent panel of indicators comparable across years.
+
+
 
 ```{r}
-pov2016 <- read_delim(here("data","poverty","pov2016.csv"),
-                      na = "s") 
-pov2017 <- read_delim(here("data","poverty","pov2017.csv"),
-                      na = "s")
-pov2018 <- read_delim(here("data","poverty","pov2018.csv"),
-                      na = "s")
-pov2019 <- read_delim(here("data","poverty","pov2019.csv"),
-                      na = "s")
-pov2020 <- read_delim(here("data","poverty","pov2020.csv"),
-                      na = "s")
-pov2021 <- read_delim(here("data","poverty","pov2021.csv"),
-                      na = "s") 
-```
+poverty_files <- list.files(
+  here("data", "poverty"),
+  pattern = "\\.csv$",
+  full.names = TRUE
+)
 
-```{r}
-pov2016_1 <- pov2016 |>
-  select(
-    MED16,
-    TP6016,
-    D916,
-    D116,
-    CODGEO,
-    LIBGEO)|>
-  rename(
-    MED = MED16,
-    TP60 = TP6016,
-    D1 = D116,
-    D9 = D916
-  )
+load_poverty <- function(file) {
 
-pov2017_1 <- pov2017 |>
-  select(
-    MED17,
-    TP6017,
-    D917,
-    D117,
-    CODGEO,
-    )|>
-  rename(
-    MED = MED17,
-    TP60 = TP6017,
-    D1 = D117,
-    D9 = D917
-  ) 
+  year <- as.integer(stringr::str_extract(file, "\\d{4}"))
 
-pov2018_1 <- pov2018 |>
-  select(
-    DEC_MED18,
-    DEC_TP6018,
-    DEC_D918,
-    DEC_D118,
-    IRIS
-  )|>
-  rename(
-    MED = DEC_MED18,
-    TP60 = DEC_TP6018,
-    D1 = DEC_D118,
-    D9 = DEC_D918
-  )
+  if (year %in% c(2016, 2017, 2019, 2020)) {
 
-pov2019_1 <- pov2019 |>
-  select(
-    MED19,
-    TP6019,
-    D919,
-    D119,
-    CODGEO)|>
-  rename(
-    MED = MED19,
-    TP60 = TP6019,
-    D1 = D119,
-    D9 = D919
-  )
+    out <- vroom(
+      file,
+      delim = ";",
+      col_select = any_of(c(
+        "CODGEO",
+        "MED16", "MED17", "MED19", "MED20",
+        "TP6016", "TP6017", "TP6019", "TP6020",
+        "D116", "D117", "D119", "D120",
+        "D916", "D917", "D919", "D920"
+      ))
+    ) |>
+      transmute(
+        CODGEO,
+        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19", "MED20")))),
+        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019", "TP6020")))),
+        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120")))),
+        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920")))),
+        year
+      )
 
-pov2020_1 <- pov2020 |>
-  select(
-    MED20,
-    TP6020,
-    D920,
-    D120,
-    CODGEO)|>
-  rename(
-    MED = MED20,
-    TP60 = TP6020,
-    D1 = D120,
-    D9 = D920
-  )
+  } else if (year == 2018) {
 
-pov2021_1 <- pov2021 |>
-  select(
-    GEO,
-    `Niveau de vie médian (en euros)`,
-    `Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie`,
-    `1er décile du niveau de vie (en euros)`,
-    `9e décile du niveau de vie (en euros)`
-   ) |>
-  rename(
-    CODGEO = GEO,
-    MED = `Niveau de vie médian (en euros)`,
-    TP60 = `Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie`,
-    D1 = `1er décile du niveau de vie (en euros)`,
-    D9 = `9e décile du niveau de vie (en euros)`
-  )
-```
+    out <- vroom(
+      file,
+      delim = ";",
+      col_select = any_of(c(
+        "IRIS",
+        "DEC_MED18",
+        "DEC_TP6018",
+        "DEC_D118",
+        "DEC_D918"
+      ))
+    ) |>
+      transmute(
+        IRIS,
+        MED  = DEC_MED18,
+        TP60 = DEC_TP6018,
+        D1   = DEC_D118,
+        D9   = DEC_D918,
+        year
+      )
 
-```{r}
-names <- pov2016_1 |>
-  select(CODGEO, LIBGEO)
-```
+  } else if (year == 2021) {
 
-Computing poverty rates for 2018 :
+    out <- vroom(
+      file,
+      delim = ";",
+      col_select = any_of(c(
+        "GEO",
+        "Niveau de vie médian (en euros)",
+        "Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie",
+        "1er décile du niveau de vie (en euros)",
+        "9e décile du niveau de vie (en euros)"
+      ))
+    ) |>
+      transmute(
+        CODGEO = GEO,
+        MED  = `Niveau de vie médian (en euros)`,
+        TP60 = `Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie`,
+        D1   = `1er décile du niveau de vie (en euros)`,
+        D9   = `9e décile du niveau de vie (en euros)`,
+        year
+      )
+  }
 
-```{r}
-pov2018_1 <- pov2018_1 |>
-  left_join(pop2018_IRIS,by = "IRIS")
-
-cols_to_weight <- c("MED", "TP60", "D9", "D1")
-
-result <- pov2018_1 %>%
-  group_by() %>%
-  summarize(
-    # Apply weighted.mean to each column in cols_to_weight
-    across(all_of(cols_to_weight), 
-           ~ weighted.mean(., P18_POP, na.rm = TRUE),
-           .names = "{.col}_weighted"),
-    
-    # Add total population
-    Total_POP = sum(P18_POP, na.rm = TRUE)
-  ) %>%
-  ungroup()
-```
-
-```{r}
-result <- pov2018_1 %>%
-  mutate(CODGEO = substr(IRIS, 1, 5)) %>%
   
-  group_by(CODGEO) %>%
-  
-  summarize(
+  out |>
+    mutate(across(
+      c(MED, TP60, D1, D9),
+      ~ suppressWarnings(as.numeric(.x))
+    ))
+}
+poverty_raw <- bind_rows(
+  lapply(poverty_files, load_poverty)
+)
+
+
+
+```
+Aggregating 2018 IRIS-level poverty data to the city level and combining weighted 2018 data with commune-level data for other years :
+
+```{r}
+poverty_2018_city <- poverty_raw |>
+  filter(year == 2018) |>
+  left_join(pop2018_IRIS, by = "IRIS") |>
+  mutate(CODGEO = substr(IRIS, 1, 5)) |>
+  group_by(CODGEO) |>
+  summarise(
     MED = weighted.mean(MED, P18_POP, na.rm = TRUE),
     TP60 = weighted.mean(TP60, P18_POP, na.rm = TRUE),
-    D9 = weighted.mean(D9, P18_POP, na.rm = TRUE),
     D1 = weighted.mean(D1, P18_POP, na.rm = TRUE),
-    
-    P18_POP = sum(P18_POP, na.rm = TRUE), 
+    D9 = weighted.mean(D9, P18_POP, na.rm = TRUE),
+    year = 2018,
+    .groups = "drop"
+  )
 
-    
-    .groups = 'drop'
-  ) |>
-  select(-P18_POP)
-  
+poverty_city <- bind_rows(
+  poverty_raw |> filter(year != 2018),
+  poverty_2018_city
+)
 ```
 
 ## Delinquency
@@ -237,233 +205,119 @@ Source : https://www.data.gouv.fr/datasets/bases-statistiques-communale-departem
 
 this is a database of all the crimes and offences (except traffic ofences) at the city level in France, published by French Police Force.
 
-```{r}
-crime_raw <- read.csv(here("data_criminality.csv")) #The file is bigger than 100 MB. To push it on the repository, we downloaded Git LFS
-```
 
 ```{r}
-crime_1 <- read_delim(here( "data_criminality.csv"),
-                      delim = ";",
-                      locale = locale(decimal_mark = ","),
-                      col_types = cols(
-                        annee = col_integer(), 
-                        nombre = col_integer()))
+library(vroom)
 
-spec(crime_1)
-```
+crime <- vroom(
+  here("data_criminality.csv"),
+  delim = ";",
+  locale = locale(decimal_mark = ","),
+  col_select = c(
+    annee,
+    CODGEO_2025,
+    indicateur,
+    nombre,
+    insee_pop
+  ),
+  col_types = cols(
+    annee = col_integer(),
+    nombre = col_integer(),
+    insee_pop = col_integer()
+  )
+)
 
-We only focus on the type of crimes and the number of crimes per cities bigger than 5000 inhabitants.
-
-```{r}
-crime_2 <- crime_1 |>
-  select(-est_diffuse, 
-         -taux_pour_mille,
-         -insee_pop_millesime,
-         -insee_log_millesime,
-         -insee_log,
-         -insee_log_millesime,
-         -complement_info_nombre,
-         -complement_info_taux)
-```
-
-```{r}
-crime_3 <- crime_2 |>
+crime_wide <- crime |>
+  filter(insee_pop >= 5000) |>
   pivot_wider(
     names_from = indicateur,
-    values_from = nombre
-  )
+    values_from = nombre,
+    values_fill = 0
+  ) |>
+  rename(CODGEO = CODGEO_2025)
+
+crime_final <- crime_wide |>
+  mutate(
+    total_crimes = rowSums(
+      across(-c(CODGEO, annee, insee_pop)),
+      na.rm = TRUE
+    ),
+    year = annee
+  ) |>
+  select(-annee)
 ```
 
-```{r}
-crime_4 <- crime_3 |>
-  filter(insee_pop>=5000) |>
-  mutate(total_crimes = rowSums(across(`Violences physiques intrafamiliales`:`Escroqueries et fraudes aux moyens de paiement`), na.rm = TRUE)) |>
-  rename(
-    CODGEO = CODGEO_2025
-  )
-```
-
-```{r}
-crime_2016 <- crime_4 |>
-  filter(annee == "2016")
-```
-
-```{r}
-crime_2017 <- crime_4 |>
-  filter(annee == "2017")
-```
-
-```{r}
-crime_2018 <- crime_4 |>
-  filter(annee == "2018")
-```
-
-```{r}
-crime_2019 <- crime_4 |>
-  filter(annee == "2019")
-```
-
-```{r}
-crime_2020 <- crime_4 |>
-  filter(annee == "2020")
-```
-
-```{r}
-crime_2021 <- crime_4 |>
-  filter(annee == "2021")
-```
-
-## Merging and grouping crimes per year per per city
-
-```{r}
-cpov_2016 <- crime_2016|>
-  left_join(pov2016_1, by = "CODGEO")
-
-cols_to_sum <- names(cpov_2016)[5:19]
-
-cpov_2016 <- cpov_2016 |>
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) |>
-  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
-  
-
-```
-
-```{r}
-name <- pov2016_1 |>
-  select(CODGEO, LIBGEO)
-
-cpov_2017 <- crime_2017|>
-  left_join(name, by = "CODGEO")|>
-  left_join(pov2017_1, by = "CODGEO")
-
-cpov_2017 <- cpov_2017 |>
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) |>
-  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
-```
-
-```{r}
-cpov_2018 <- crime_2018|>
-  left_join(name, by = "CODGEO")|>
-  left_join(result, by = "CODGEO")
-
-cpov_2018 <- cpov_2018 |>
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) |>
-  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
-```
-
-```{r}
-cpov_2019 <- crime_2019|>
-  left_join(name, by = "CODGEO")|>
-  left_join(pov2019_1, by = "CODGEO")
-cpov_2019 <- cpov_2019 %>%
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
-  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
-```
-
-```{r}
-cpov_2020 <- crime_2020|>
-  left_join(name, by = "CODGEO")|>
-  left_join(pov2020_1, by = "CODGEO")
-cpov_2020 <- cpov_2020 %>%
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
-  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
-```
-
-```{r}
-cpov_2021 <- crime_2021|>
-  left_join(name, by = "CODGEO")|>
-  left_join(pov2021_1, by = "CODGEO")
-cpov_2021 <- cpov_2021 %>%
-  group_by(CODGEO, annee, insee_pop,MED,TP60,D9,D1,LIBGEO) %>%
-  summarise(across(all_of(cols_to_sum),~sum(.x, na.rm = TRUE)))
-```
 
 ## Selecting cities present in the 2018 data
 
-```{r}
-cities_of_interest <- unique(result$CODGEO)
-
-cpov_2016 <- cpov_2016 |>
-  filter(CODGEO %in% cities_of_interest)
-cpov_2017 <- cpov_2017 |>
-  filter(CODGEO %in% cities_of_interest)
-cpov_2018 <- cpov_2018 |>
-  filter(CODGEO %in% cities_of_interest)
-cpov_2019 <- cpov_2019 |>
-  filter(CODGEO %in% cities_of_interest)
-cpov_2020 <- cpov_2020 |>
-  filter(CODGEO %in% cities_of_interest)
-cpov_2021 <- cpov_2021 |>
-  filter(CODGEO %in% cities_of_interest)
-```
-
-we now have data on criminality and poverty for each year betweem 2016 and 2021
-
-Now we have to clean and add to the rest the real estate prices data :
 
 ```{r}
-ppsm_2016 <- ppsm_2016 |> 
-  select(
-    INSEE_COM,
-    Prixm2Moyen
-  ) |>
-  rename(CODGEO = INSEE_COM)
+years_of_interest <- 2016:2021
 
-ppsm_2017 <- ppsm_2017 |> 
-  select(
-    INSEE_COM,
-    Prixm2Moyen
-  ) |>
-  rename(CODGEO = INSEE_COM)
+crime_final <- crime_final |>
+  filter(year %in% years_of_interest)
 
-ppsm_2018 <- ppsm_2018 |> 
-  select(
-    INSEE_COM,
-    Prixm2Moyen
-  ) |>
-  rename(CODGEO = INSEE_COM)
+ppsm <- ppsm |>
+  filter(year %in% years_of_interest)
 
-ppsm_2019 <- ppsm_2019 |> 
-  select(
-    INSEE_COM,
-    Prixm2Moyen
-  ) |>
-  rename(CODGEO = INSEE_COM)
-
-ppsm_2020 <- ppsm_2020 |> 
-  select(
-    INSEE_COM,
-    Prixm2Moyen
-  ) |>
-  rename(CODGEO = INSEE_COM)
-
-ppsm_2021 <- ppsm_2021 |> 
-  select(
-    INSEE_COM,
-    Prixm2Moyen
-  ) |>
-  rename(CODGEO = INSEE_COM)
+data_final <- crime_final |>
+  left_join(poverty_city, by = c("CODGEO", "year")) |>
+  left_join(ppsm, by = c("CODGEO", "year"))
 ```
 
 ```{r}
-data_2016 <- cpov_2016 |>
-  left_join(ppsm_2016, by ="CODGEO" )
+poverty_city <- poverty_city |>
+  mutate(
+    CODGEO = as.character(CODGEO),
+    year = as.integer(year)
+  )
 
-data_2017 <- cpov_2017 |>
-  left_join(ppsm_2017, by ="CODGEO" )
+crime_final <- crime_final |>
+  mutate(
+    CODGEO = as.character(CODGEO),
+    year = as.integer(year)
+  )
 
-data_2018 <- cpov_2018 |>
-  left_join(ppsm_2018, by ="CODGEO" )
+ppsm <- ppsm |>
+  mutate(
+    CODGEO = as.character(CODGEO),
+    year = as.integer(year)
+  )
 
-data_2019 <- cpov_2019 |>
-  left_join(ppsm_2019, by ="CODGEO" )
 
-data_2020 <- cpov_2020 |>
-  left_join(ppsm_2020, by ="CODGEO" )
+data_final <- crime_final |>
+  left_join(poverty_city, by = c("CODGEO", "year")) |>
+  left_join(ppsm, by = c("CODGEO", "year"))
 
-data_2021 <- cpov_2021 |>
-  left_join(ppsm_2021, by ="CODGEO" )
 ```
+
+```{r}
+cities_2018 <- poverty_2018_city |>
+  pull(CODGEO) |>
+  unique()
+
+data_final_994 <- data_final |>
+  filter(CODGEO %in% cities_2018)
+data_final_994 <- data_final_994 |>
+  select(-IRIS)
+```
+
+Adding the cities names : 
+
+```{r}
+city_names <- vroom(
+  here("data", "poverty", "pov2016.csv"),
+  delim = ";",
+  col_select = c(CODGEO, LIBGEO)
+) |>
+  distinct()
+
+data_final_994 <- data_final_994 |>
+  left_join(city_names, by = "CODGEO")
+```
+
+
+
 
 -\> We have our clean data for all years between 2016 and 2021
 
@@ -515,6 +369,8 @@ dataset_info <- data.table(
 knitr::kable(dataset_info)
 
 ```
+
+
 
 (Similar for each year)
 
