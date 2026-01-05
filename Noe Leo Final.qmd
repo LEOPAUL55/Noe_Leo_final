@@ -201,14 +201,12 @@ poverty_city <- bind_rows(
 
 ## Delinquency
 
-Source : https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/
+Source: https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales
 
-this is a database of all the crimes and offences (except traffic ofences) at the city level in France, published by French Police Force.
+Here is the loading of the database for the delinquency. This is a database of all the crimes and offences (except traffic offences) at the city level in France, published by French Police Force, since 2016. 
 
-
+The csv format of the file creates problems of fromat that must be solved (types of column, delimiotation...).
 ```{r}
-library(vroom)
-
 crime <- vroom(
   here("data_criminality.csv"),
   delim = ";",
@@ -226,16 +224,21 @@ crime <- vroom(
     insee_pop = col_integer()
   )
 )
+```
 
+The type of crimes must be reshape to long format (in rows) to wide format (in columns).
+```{r}
 crime_wide <- crime |>
-  filter(insee_pop >= 5000) |>
   pivot_wider(
     names_from = indicateur,
     values_from = nombre,
     values_fill = 0
   ) |>
   rename(CODGEO = CODGEO_2025)
+```
 
+The total number of crimes per year per city is computed by doing the sum of each type of crimes.
+```{r}
 crime_final <- crime_wide |>
   mutate(
     total_crimes = rowSums(
@@ -250,7 +253,7 @@ crime_final <- crime_wide |>
 
 ## Selecting cities present in the 2018 data
 
-
+The analysis will only focus on the cities where all the informations are available on 2018, because of the IRIS nomenclature.
 ```{r}
 years_of_interest <- 2016:2021
 
@@ -264,46 +267,22 @@ data_final <- crime_final |>
   left_join(poverty_city, by = c("CODGEO", "year")) |>
   left_join(ppsm, by = c("CODGEO", "year"))
 ```
-
 ```{r}
-poverty_city <- poverty_city |>
-  mutate(
-    CODGEO = as.character(CODGEO),
-    year = as.integer(year)
-  )
-
-crime_final <- crime_final |>
-  mutate(
-    CODGEO = as.character(CODGEO),
-    year = as.integer(year)
-  )
-
-ppsm <- ppsm |>
-  mutate(
-    CODGEO = as.character(CODGEO),
-    year = as.integer(year)
-  )
-
-
 data_final <- crime_final |>
   left_join(poverty_city, by = c("CODGEO", "year")) |>
   left_join(ppsm, by = c("CODGEO", "year"))
-
 ```
-
 ```{r}
 cities_2018 <- poverty_2018_city |>
   pull(CODGEO) |>
   unique()
 
-data_final_994 <- data_final |>
-  filter(CODGEO %in% cities_2018)
-data_final_994 <- data_final_994 |>
+data_final <- data_final |>
+  filter(CODGEO %in% cities_2018) |>
   select(-IRIS)
 ```
 
-Adding the cities names : 
-
+Adding the cities names: 
 ```{r}
 city_names <- vroom(
   here("data", "poverty", "pov2016.csv"),
@@ -312,29 +291,22 @@ city_names <- vroom(
 ) |>
   distinct()
 
-data_final_994 <- data_final_994 |>
+data_final <- data_final |>
   left_join(city_names, by = "CODGEO")
 ```
 
-
-
-
--\> We have our clean data for all years between 2016 and 2021
+-\> We obtained a clean dataset for all years between 2016 and 2021
 
 # Cleaned data tables : summary and most important variables
 
-First, we computed the 2018 poverty rates by city, weighting the poverty rates of each geocode by the population of the corresponding IRIS codes. We then kept only the variables of interest for each dataset (poverty rates, crime statistics, and housing prices) and merged them. Now, for each year (2016–2021), we have a dataframe that includes the number of crimes for each crime category (summing crimes corresponding to different units of account when they refer anyways all to a unic crime) for each city with complete poverty rate observations across all years. The dataset also includes the mean price per square meter of real estate transactions in each city for the corresponding year.
+After loading the datasets, we needed to convert the IRIS code into the GEOCODE by weighting the poverty rate of each geocode by the population of the corresponding IRIS code. By doing that, we obtained clean data for 994 cities. We only focus on these cities in the analysis from 2016 to 2021. We also computed the poverty rate for each city.
+
+We only kept the variables of interest by loading the datasets, that are the poverty rate, the first and last decile, the median income, the number of crimes per crime type and the real estate price (average price per square meter).Then we merged them into an only dataset that combines all the data per cities per years. 
 
 ```{r}
 descriptions <- c(
   "Unique code that corresponds to one city. The first two numbers correspond to a department",
-  "The concerned year",
   "The city's population",
-  "Median income for this year",
-  "Poverty rate (set at less than 60% of the median income)",
-  "9th income decile",
-  "1st income decile",
-  "The city's name",
   "Number of domestic physical violence reported for the year",
   "Number of non domestic physical violence reported for the year",
   "Number of sexual violence reported for the year",
@@ -350,12 +322,19 @@ descriptions <- c(
   "Number of illegal drug use sanctioned by fixed fine reported for the year",
   "Number of drug dealing cases reported for the year",
   "Number of fraud and payment method fraud reported for the year",
-  "Price per square meter of the real estate goods sold for the year"
+  "Total number of crimes per cities reported for this year",
+  "The concerned year",
+  "Median income for this year",
+  "Poverty rate (set at less than 60% of the median income)",
+  "1st income decile",
+  "9th income decile",
+  "Price per square meter of the real estate goods sold for the year", 
+  "The city's name"
 )
 
 summary <- data.table(
-  Variable = names(data_2016),
-  Type = sapply(data_2016, class),
+  Variable = names(data_final),
+  Type = sapply(data_final, class),
   Description = descriptions
 )
 
@@ -363,16 +342,12 @@ knitr::kable(summary)
 
 dataset_info <- data.table(
   Info = c("Number of rows", "Number of columns"),
-  Value = c(nrow(data_2016), ncol(data_2016)) 
+  Value = c(nrow(data_final), ncol(data_final)) 
 )
 
 knitr::kable(dataset_info)
 
 ```
-
-
-
-(Similar for each year)
 
 # Research question :
 
@@ -380,4 +355,4 @@ Does the acceleration of the gentrification process in certain French cities wit
 
 The first goal will be to make a gentrification index per city with a few variables: square meter price growth, median wage growth, poverty rate growth.
 
-Then we will select the cities with the highest gentrification index (say top 20%) and compare it to the rest of the cities : do we observe a declination in terms of delinquency between the top 20% and the others ? If yes, do we observe a spatial displacement of crime to non-gentrifying areas ?
+Then we will select the cities with the highest gentrification index (say top 20%) and compare it to the rest of the cities : do we observe a declination in terms of delinquency between the top 20% and the others? If yes, do we observe a spatial displacement of crime to non-gentrifying areas?
