@@ -83,7 +83,6 @@ We will only focus on the poverty rate, the median standard of living, the first
 Poverty data are provided as separate yearly files with heterogeneous structures. Variable names differ across years, and the 2018 data are reported at the IRIS level rather than the commune level. To handle this, we implement a loading strategy that reads each file separately while restricting imports to the variables of interest (years 2016:2021). Poverty indicators are harmonized across years. Non‑numeric values are explicitly converted to missing values during loading, but it won't affect our analysis because this only concerns small cities. The result is a consistent panel of indicators comparable across years.
 
 
-
 ```{r}
 poverty_files <- list.files(
   here("data", "poverty"),
@@ -93,27 +92,28 @@ poverty_files <- list.files(
 
 load_poverty <- function(file) {
 
-  year <- as.integer(stringr::str_extract(file, "\\d{4}"))
+ year <- as.integer(str_extract(basename(file), "\\d{4}"))
 
-  if (year %in% c(2016, 2017, 2019, 2020)) {
+
+  if (year %in% c(2016, 2017, 2019, 2020, 2021)) {
 
     out <- vroom(
       file,
       delim = ";",
       col_select = any_of(c(
         "CODGEO",
-        "MED16", "MED17", "MED19", "MED20",
-        "TP6016", "TP6017", "TP6019", "TP6020",
-        "D116", "D117", "D119", "D120",
-        "D916", "D917", "D919", "D920"
+        "MED16", "MED17", "MED19", "MED20", "MED21",
+        "TP6016", "TP6017", "TP6019", "TP6020","TP6021",
+        "D116", "D117", "D119", "D120","D121",
+        "D916", "D917", "D919", "D920","D921"
       ))
     ) |>
       transmute(
         CODGEO,
-        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19", "MED20")))),
-        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019", "TP6020")))),
-        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120")))),
-        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920")))),
+        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19", "MED20","MED21")))),
+        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019", "TP6020","TP6021")))),
+        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120","D121")))),
+        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920","D921")))),
         year
       )
 
@@ -139,43 +139,22 @@ load_poverty <- function(file) {
         year
       )
 
-  } else if (year == 2021) {
-
-    out <- vroom(
-      file,
-      delim = ";",
-      col_select = any_of(c(
-        "GEO",
-        "Niveau de vie médian (en euros)",
-        "Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie",
-        "1er décile du niveau de vie (en euros)",
-        "9e décile du niveau de vie (en euros)"
-      ))
-    ) |>
-      transmute(
-        CODGEO = GEO,
-        MED  = `Niveau de vie médian (en euros)`,
-        TP60 = `Taux de pauvreté (en %) au seuil de 60 % de la médiane du niveau de vie`,
-        D1   = `1er décile du niveau de vie (en euros)`,
-        D9   = `9e décile du niveau de vie (en euros)`,
-        year
-      )
   }
+ 
 
   
   out |>
     mutate(across(
-      c(MED, TP60, D1, D9),
-      ~ suppressWarnings(as.numeric(.x))
-    ))
+  any_of(c("MED", "TP60", "D1", "D9")),
+  ~ suppressWarnings(as.numeric(gsub(",", ".", .x)))
+))
 }
 poverty_raw <- bind_rows(
   lapply(poverty_files, load_poverty)
 )
-
-
-
 ```
+
+
 Aggregating 2018 IRIS-level poverty data to the city level and combining weighted 2018 data with commune-level data for other years :
 
 ```{r}
@@ -293,7 +272,26 @@ city_names <- vroom(
 
 data_final <- data_final |>
   left_join(city_names, by = "CODGEO")
+
 ```
+Filtering out cities with no price-per-square-meter data for 2016 or 2021 (these cities are useless for our analysis, as we therefore won’t be able to compute any rate of change between 2016 and 2021):
+
+```{r}
+cities_with_prices <- data_final |>
+  filter(year %in% c(2016, 2021)) |>
+  group_by(CODGEO) |>
+  summarise(
+    has_2016 = any(year == 2016 & !is.na(Prixm2Moyen)),
+    has_2021 = any(year == 2021 & !is.na(Prixm2Moyen)),
+    .groups = "drop"
+  ) |>
+  filter(has_2016 & has_2021) |>
+  pull(CODGEO)
+
+data_final <- data_final |>
+  filter(CODGEO %in% cities_with_prices)
+```
+
 
 -\> We obtained a clean dataset for all years between 2016 and 2021
 
