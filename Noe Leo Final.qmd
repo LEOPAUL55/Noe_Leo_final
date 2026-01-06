@@ -354,3 +354,110 @@ Does the acceleration of the gentrification process in certain French cities wit
 The first goal will be to make a gentrification index per city with a few variables: square meter price growth, median wage growth, poverty rate growth.
 
 Then we will select the cities with the highest gentrification index (say top 20%) and compare it to the rest of the cities : do we observe a declination in terms of delinquency between the top 20% and the others? If yes, do we observe a spatial displacement of crime to non-gentrifying areas?
+
+# Building a gentrification indicator
+
+In order to build our gentrification indicator, we'll have to compute the changes between 2016 and 2021 for the variables that we're interested in.
+
+```{r}
+# Keep only endpoints
+endpoints <- data_final |>
+  filter(year %in% c(2016, 2021)) |>
+  select(
+    CODGEO, LIBGEO, year,
+    Prixm2Moyen, MED, TP60
+  )
+
+# Pivot to wide
+endpoints_wide <- endpoints |>
+  pivot_wider(
+    names_from = year,
+    values_from = c(Prixm2Moyen, MED, TP60),
+    names_sep = "_"
+  )
+
+# Compute changes
+gentrif_vars <- endpoints_wide |>
+  mutate(
+    price_growth  = (Prixm2Moyen_2021 - Prixm2Moyen_2016) / Prixm2Moyen_2016,
+    income_growth = (MED_2021 - MED_2016) / MED_2016,
+    poverty_change = TP60_2016 - TP60_2021
+  )
+```
+
+
+We're now able to compute our index. Our condition for a city to be considered gentrified are :
+- it shows higher price growth than the median of the cities 
+- AND it shows higher income growth than the median of the cities
+- AND it shows lower poverty growth than the median of the cities
+- AND it wasn't too rich to begin with 
+
+```{r}
+gentrif_vars <- gentrif_vars |>
+  mutate(
+    price_z   = as.numeric(scale(price_growth)),
+    income_z  = as.numeric(scale(income_growth)),
+    poverty_z = as.numeric(scale(poverty_change))
+  )
+
+income_2016_med <- median(gentrif_vars$MED_2016, na.rm = TRUE)
+
+gentrif_vars <- gentrif_vars |>
+  mutate(
+    gentrifying =
+      price_z   > 0 &
+      income_z  > 0 &
+      poverty_z > 0 &
+      MED_2016  < income_2016_med
+  )
+
+table(gentrif_vars$gentrifying)
+```
+
+Computing crime rates change per capita : 
+
+```{r}
+
+crime_rate_change <- data_final |>
+  filter(year %in% c(2016, 2021)) |>
+  select(CODGEO, year, total_crimes, insee_pop) |>
+  pivot_wider(
+    names_from = year,
+    values_from = c(total_crimes, insee_pop),
+    names_sep = "_"
+  ) |>
+  mutate(
+    crime_rate_2016 = total_crimes_2016 / insee_pop_2016,
+    crime_rate_2021 = total_crimes_2021 / insee_pop_2021,
+    crime_rate_change =
+      (crime_rate_2021 - crime_rate_2016) / crime_rate_2016
+  ) |>
+  left_join(gentrif_vars, by = "CODGEO")
+```
+
+
+
+Comparing crime rate change by capita betweeen gentrified cities and non gentrified cities.
+
+```{r}
+crime_rate_change <- crime_rate_change |>
+  select(-gentrifying) |>
+  left_join(
+    gentrif_vars |> select(CODGEO, gentrifying),
+    by = "CODGEO"
+  )
+
+ggplot(crime_rate_change,
+       aes(x = gentrifying, y = crime_rate_change)) +
+  geom_boxplot(fill = 'red', alpha = 0.7) +
+  labs(
+    x = "Gentrifying cities",
+    y = "Crime rate change (2016–2021)",
+    title = "Crime rate evolution in gentrifying vs non-gentrifying cities"
+  ) +
+  theme_minimal()
+```
+
+Now, let's compute the change in crime rate per type and compare between gentrified and non gentrified cities :
+
+
