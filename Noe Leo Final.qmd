@@ -33,7 +33,6 @@ Because the 2018 income data is available by IRIS code rather than by GEO code, 
 pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
     na = "s") |>
   select(IRIS,P18_POP)
-    
 ```
 
 ## Real estate prices
@@ -45,24 +44,57 @@ This is a collection of various variables on residential housing market at the c
 Real‑estate price data are provided as separate yearly CSV files. To improve efficiency and avoid redundant code, we use vroom’s multi‑file loading functionality to read all files simultaneously. The year is extracted from the file name, and city identifiers are harmonized to allow consistent merging with other datasets.
 
 ```{r}
-ppsm_files <- list.files(
-  here("data", "price per square meter"),
-  pattern = "\\.csv$",
-  full.names = TRUE
-)
-
-ppsm <- vroom(
-  ppsm_files,
-  delim = ",",
+ppsm_raw <- vroom(
+  list.files(
+    here("data", "price per square meter"),
+    pattern = "\\.csv$",
+    full.names = TRUE
+  ),
   col_select = c(INSEE_COM, Prixm2Moyen),
   id = "source"
 ) |>
-  mutate(
-    year = str_extract(source, "\\d{4}") |> as.integer(),
-    CODGEO = INSEE_COM
-  ) |>
-  select(CODGEO, year, Prixm2Moyen)
+  transmute(
+    CODGEO = as.character(INSEE_COM),
+    year   = as.integer(str_extract(source, "\\d{4}")),
+    Prixm2Moyen
+  )
 ```
+We need to add the information for Paris by arrondissements that are missing in the dataset above. To do so, we will use the data available at https://paris.notaires.fr/fr/carte-des-prix?utm_source=chatgpt.com. 
+
+For simplicity, we only focus on the selling price of appartements in the city from 2016 to 2021 (trimester 4). The available file is a PDF that can be easily convert into a CSV file.
+
+```{r}
+ppsm_paris <- vroom(
+  here("data", "dvfparis.csv"),
+  delim = ",",
+  quote = "\"",
+  col_types = cols()  # infer types automatically
+)|>
+  mutate(
+    year    = as.integer(str_extract(Trimestre, "\\d{4}")),
+    quarter = as.integer(str_extract(Trimestre, "(?<=T)\\d"))
+  ) |>
+  filter(quarter == 4, year >= 2016, year <= 2021) |>
+  pivot_longer(
+    cols = -c(Trimestre, quarter, year, Centre),
+    names_to = "arrondissement",
+    values_to = "Prixm2Moyen"
+  ) |>
+  transmute(
+    CODGEO = as.character(75100 + as.integer(str_remove(arrondissement, "er|e"))),
+    year,
+    Prixm2Moyen = as.numeric(str_remove_all(Prixm2Moyen, "[ €]"))
+  ) |>
+  arrange(year, CODGEO)
+
+```
+
+After that, we just need to merge the two datasets to obtain clean data about the real estate price in France.
+```{r}
+ppsm <- bind_rows(ppsm_raw, ppsm_paris) |>
+  arrange(year, CODGEO)
+```
+
 
 ## Poverty
 
@@ -152,6 +184,8 @@ load_poverty <- function(file) {
 poverty_raw <- bind_rows(
   lapply(poverty_files, load_poverty)
 )
+
+poverty_files
 ```
 
 
@@ -178,13 +212,25 @@ poverty_city <- bind_rows(
 )
 ```
 
+test
+
+```{r}
+cities_2018 <- poverty_2018_city$CODGEO  # extract vector of CODGEO codes
+
+poverty <- poverty_raw %>%
+  filter(CODGEO %in% cities_2018)|>
+  select(-IRIS)|>
+  arrange(year, CODGEO)
+```
+
+
 ## Delinquency
 
 Source: https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales
 
 Here is the loading of the database for the delinquency. This is a database of all the crimes and offences (except traffic offences) at the city level in France, published by French Police Force, since 2016. 
 
-The csv format of the file creates problems of fromat that must be solved (types of column, delimiotation...).
+The CSV format of the file creates problems of fromat that must be solved (types of column, delimiotation...).
 ```{r}
 crime <- vroom(
   here("data_criminality.csv"),
