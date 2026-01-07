@@ -44,7 +44,7 @@ This is a collection of various variables on residential housing market at the c
 Real‑estate price data are provided as separate yearly CSV files. To improve efficiency and avoid redundant code, we use vroom’s multi‑file loading functionality to read all files simultaneously. The year is extracted from the file name, and city identifiers are harmonized to allow consistent merging with other datasets.
 
 ```{r}
-ppsm_raw <- vroom(
+ppsm <- vroom(
   list.files(
     here("data", "price per square meter"),
     pattern = "\\.csv$",
@@ -91,7 +91,7 @@ ppsm_paris <- vroom(
 
 After that, we just need to merge the two datasets to obtain clean data about the real estate price in France.
 ```{r}
-ppsm <- bind_rows(ppsm_raw, ppsm_paris) |>
+ppsm <- bind_rows(ppsm, ppsm_paris) |>
   arrange(year, CODGEO)
 ```
 
@@ -181,18 +181,16 @@ load_poverty <- function(file) {
   ~ suppressWarnings(as.numeric(gsub(",", ".", .x)))
 ))
 }
-poverty_raw <- bind_rows(
+poverty <- bind_rows(
   lapply(poverty_files, load_poverty)
 )
-
-poverty_files
 ```
 
 
 Aggregating 2018 IRIS-level poverty data to the city level and combining weighted 2018 data with commune-level data for other years :
 
 ```{r}
-poverty_2018_city <- poverty_raw |>
+poverty_2018 <- poverty |>
   filter(year == 2018) |>
   left_join(pop2018_IRIS, by = "IRIS") |>
   mutate(CODGEO = substr(IRIS, 1, 5)) |>
@@ -206,23 +204,11 @@ poverty_2018_city <- poverty_raw |>
     .groups = "drop"
   )
 
-poverty_city <- bind_rows(
-  poverty_raw |> filter(year != 2018),
-  poverty_2018_city
+poverty <- bind_rows(
+  poverty |> filter(year != 2018),
+  poverty_2018
 )
 ```
-
-test
-
-```{r}
-cities_2018 <- poverty_2018_city$CODGEO  # extract vector of CODGEO codes
-
-poverty <- poverty_raw %>%
-  filter(CODGEO %in% cities_2018)|>
-  select(-IRIS)|>
-  arrange(year, CODGEO)
-```
-
 
 ## Delinquency
 
@@ -231,6 +217,10 @@ Source: https://www.data.gouv.fr/datasets/bases-statistiques-communale-departeme
 Here is the loading of the database for the delinquency. This is a database of all the crimes and offences (except traffic offences) at the city level in France, published by French Police Force, since 2016. 
 
 The CSV format of the file creates problems of fromat that must be solved (types of column, delimiotation...).
+
+The type of crimes must be reshape to long format (in rows) to wide format (in columns).
+
+The total number of crimes per year per city is computed by doing the sum of each type of crimes.
 ```{r}
 crime <- vroom(
   here("data_criminality.csv"),
@@ -248,23 +238,13 @@ crime <- vroom(
     nombre = col_integer(),
     insee_pop = col_integer()
   )
-)
-```
-
-The type of crimes must be reshape to long format (in rows) to wide format (in columns).
-```{r}
-crime_wide <- crime |>
+)|>
   pivot_wider(
     names_from = indicateur,
     values_from = nombre,
     values_fill = 0
   ) |>
-  rename(CODGEO = CODGEO_2025)
-```
-
-The total number of crimes per year per city is computed by doing the sum of each type of crimes.
-```{r}
-crime_final <- crime_wide |>
+  rename(CODGEO = CODGEO_2025)|>
   mutate(
     total_crimes = rowSums(
       across(-c(CODGEO, annee, insee_pop)),
@@ -275,40 +255,24 @@ crime_final <- crime_wide |>
   select(-annee)
 ```
 
-
 ## Selecting cities present in the 2018 data
 
 The analysis will only focus on the cities where all the informations are available on 2018, because of the IRIS nomenclature.
+
+The period that we will study is from 2016 to 2021. We are adding in the dataset the cities' name as well as removing the ones for which we don't have the information of the real estate price.
 ```{r}
 years_of_interest <- 2016:2021
-
-crime_final <- crime_final |>
-  filter(year %in% years_of_interest)
 
 ppsm <- ppsm |>
   filter(year %in% years_of_interest)
 
-data_final <- crime_final |>
-  left_join(poverty_city, by = c("CODGEO", "year")) |>
-  left_join(ppsm, by = c("CODGEO", "year"))
-```
-```{r}
-data_final <- crime_final |>
-  left_join(poverty_city, by = c("CODGEO", "year")) |>
-  left_join(ppsm, by = c("CODGEO", "year"))
-```
-```{r}
-cities_2018 <- poverty_2018_city |>
+crime <- crime |>
+  filter(year %in% years_of_interest)
+
+cities_2018 <- poverty_2018 |>
   pull(CODGEO) |>
   unique()
 
-data_final <- data_final |>
-  filter(CODGEO %in% cities_2018) |>
-  select(-IRIS)
-```
-
-Adding the cities names: 
-```{r}
 city_names <- vroom(
   here("data", "poverty", "pov2016.csv"),
   delim = ";",
@@ -316,30 +280,14 @@ city_names <- vroom(
 ) |>
   distinct()
 
-data_final <- data_final |>
+data_final <- crime |>
+  left_join(poverty, by = c("CODGEO", "year")) |>
+  left_join(ppsm, by = c("CODGEO", "year"))|>
+  filter(CODGEO %in% cities_2018, !is.na(Prixm2Moyen)) |>
+  select(-IRIS)|>
   left_join(city_names, by = "CODGEO")
-
 ```
-Filtering out cities with no price-per-square-meter data for 2016 or 2021 (these cities are useless for our analysis, as we therefore won’t be able to compute any rate of change between 2016 and 2021):
-
-```{r}
-cities_with_prices <- data_final |>
-  filter(year %in% c(2016, 2021)) |>
-  group_by(CODGEO) |>
-  summarise(
-    has_2016 = any(year == 2016 & !is.na(Prixm2Moyen)),
-    has_2021 = any(year == 2021 & !is.na(Prixm2Moyen)),
-    .groups = "drop"
-  ) |>
-  filter(has_2016 & has_2021) |>
-  pull(CODGEO)
-
-data_final <- data_final |>
-  filter(CODGEO %in% cities_with_prices)
-```
-
-
--\> We obtained a clean dataset for all years between 2016 and 2021
+We obtained a clean dataset for all years between 2016 and 2021
 
 # Cleaned data tables : summary and most important variables
 
