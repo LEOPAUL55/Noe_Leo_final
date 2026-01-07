@@ -259,7 +259,7 @@ crime <- vroom(
 
 The analysis will only focus on the cities where all the informations are available on 2018, because of the IRIS nomenclature.
 
-The period that we will study is from 2016 to 2021. We are adding in the dataset the cities' name as well as removing the ones for which we don't have the information of the real estate price.
+The period that we will study is from 2016 to 2021. We are adding in the dataset the cities' name as well as removing the ones for which we don't have the information of the real estate price in at least one year.
 ```{r}
 years_of_interest <- 2016:2021
 
@@ -285,9 +285,13 @@ data_final <- crime |>
   left_join(ppsm, by = c("CODGEO", "year"))|>
   filter(CODGEO %in% cities_2018, !is.na(Prixm2Moyen)) |>
   select(-IRIS)|>
-  left_join(city_names, by = "CODGEO")
+  left_join(city_names, by = "CODGEO")|>
+  distinct(CODGEO, year, .keep_all = TRUE) |>
+  group_by(CODGEO) |>
+  filter(n_distinct(year) == 6) |>
+  ungroup()
 ```
-We obtained a clean dataset for all years between 2016 and 2021
+We obtained a clean dataset for 897 cities between 2016 and 2021.
 
 # Cleaned data tables : summary and most important variables
 
@@ -348,6 +352,10 @@ Does the acceleration of the gentrification process in certain French cities wit
 The first goal will be to make a gentrification index per city with a few variables: square meter price growth, median wage growth, poverty rate growth.
 
 Then we will select the cities with the highest gentrification index (say top 20%) and compare it to the rest of the cities : do we observe a declination in terms of delinquency between the top 20% and the others? If yes, do we observe a spatial displacement of crime to non-gentrifying areas?
+
+# Some descriptive statistics
+
+
 
 # Building a gentrification indicator
 
