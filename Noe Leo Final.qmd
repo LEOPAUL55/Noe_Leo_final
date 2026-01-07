@@ -203,11 +203,19 @@ poverty_2018 <- poverty |>
     year = 2018,
     .groups = "drop"
   )
+```
+```{r}
+codgeo_2018 <- poverty_2018 |>
+  pull(CODGEO)
 
 poverty <- bind_rows(
   poverty |> filter(year != 2018),
   poverty_2018
 )
+```
+```{r}
+poverty <- poverty |>
+  filter(CODGEO %in% codgeo_2018)
 ```
 
 ## Delinquency
@@ -260,19 +268,8 @@ crime <- vroom(
 The analysis will only focus on the cities where all the informations are available on 2018, because of the IRIS nomenclature.
 
 The period that we will study is from 2016 to 2021. We are adding in the dataset the cities' name as well as removing the ones for which we don't have the information of the real estate price in at least one year.
+
 ```{r}
-years_of_interest <- 2016:2021
-
-ppsm <- ppsm |>
-  filter(year %in% years_of_interest)
-
-crime <- crime |>
-  filter(year %in% years_of_interest)
-
-cities_2018 <- poverty_2018 |>
-  pull(CODGEO) |>
-  unique()
-
 city_names <- vroom(
   here("data", "poverty", "pov2016.csv"),
   delim = ";",
@@ -280,14 +277,14 @@ city_names <- vroom(
 ) |>
   distinct()
 
-data_final <- crime |>
-  left_join(poverty, by = c("CODGEO", "year")) |>
+data_final <- poverty |>
+  left_join(crime, by = c("CODGEO", "year")) |>
   left_join(ppsm, by = c("CODGEO", "year"))|>
-  filter(CODGEO %in% cities_2018, !is.na(Prixm2Moyen)) |>
   select(-IRIS)|>
   left_join(city_names, by = "CODGEO")|>
   distinct(CODGEO, year, .keep_all = TRUE) |>
   group_by(CODGEO) |>
+  filter(!is.na(Prixm2Moyen))|>
   filter(n_distinct(year) == 6) |>
   ungroup()
 ```
@@ -356,11 +353,15 @@ Then we will select the cities with the highest gentrification index (say top 20
 # Some descriptive statistics
 
 ```{r}
-install.packages("geodata")
-install.packages("sf")
-library(geodata)
-library(sf)
+price_evolution <- data_final|>
+  select(CODGEO, LIBGEO, year, Prixm2Moyen) |>
+ group_by(CODGEO) %>%
+  mutate(
+    Prixm2_diff = ((Prixm2Moyen - lag(Prixm2Moyen))/lag(Prixm2Moyen))*100  # difference from previous year
+  ) %>%
+  ungroup()
 ```
+
 ```{r}
 city <- st_read(here("data","admin_city.gpkg"),layer = "COMMUNE")|>
   rename(
@@ -369,66 +370,47 @@ city <- st_read(here("data","admin_city.gpkg"),layer = "COMMUNE")|>
   )
 
 city$CODGEO <- sprintf("%05s", city$CODGEO)
-
-data_2016 <- data_final |> filter(year == 2016)
-
-map_2016 <- city |> 
-  left_join(data_2016, by = "CODGEO")
-
-sum(!is.na(map_2016$Prixm2Moyen))
-```
-```{r}
-ggplot(map_2016) +
-  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
-  scale_fill_viridis(option = "magma",
-                     na.value = "grey90",
-                     name = "€/m²") +
-  labs(title = "Average price per m² – France (2016)") +
-  theme_minimal()
 ```
 
 ```{r}
-data_2021 <- data_final |> filter(year == 2021)
+ppsm_variation <- ppsm %>%
+  filter(CODGEO %in% data_final$CODGEO)|>
+  group_by(CODGEO) %>%
+  # get first and last year values
+  summarise(
+    Prixm2_start = Prixm2Moyen[year == min(year)],  # first year
+    Prixm2_end   = Prixm2Moyen[year == max(year)],  # last year
+    .groups = "drop"
+  ) %>%
+  # compute variation
+  mutate(
+    Prixm2_diff = Prixm2_end - Prixm2_start,                     # absolute change
+    Prixm2_pct  = ((Prixm2_end / Prixm2_start) - 1) * 100          # % change
+  )|>
+  left_join(city_names, by = "CODGEO")
 
-map_2021 <- city |> 
-  left_join(data_2021, by = "CODGEO")
-
-min_price <- min(c(map_2016$Prixm2Moyen, map_2021$Prixm2Moyen), na.rm = TRUE)
-max_price <- max(c(map_2016$Prixm2Moyen, map_2021$Prixm2Moyen), na.rm = TRUE)
-
-ggplot(map_2021) +
-  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
-  scale_fill_viridis(option = "magma",
-                     limits = c(min_price, max_price),
-                     na.value = "grey90",
-                     name = "€/m²") +
-  labs(title = "Average price per m² – France (2021)") +
-  theme_minimal()
+ppsm_variation <- city |> 
+  left_join(ppsm_variation, by = "CODGEO")
 ```
 ```{r}
-install.packages("patchwork")
-library(patchwork)
-
-p2016 <- ggplot(map_2016) +
-  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
-  scale_fill_viridis(option = "magma",
-                     limits = c(min_price, max_price),
-                     na.value = "grey90",
-                     name = "€/m²") +
-  labs(title = "2016") +
-  theme_minimal()
-
-p2021 <- ggplot(map_2021) +
-  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
-  scale_fill_viridis(option = "magma",
-                     limits = c(min_price, max_price),
-                     na.value = "grey90",
-                     name = "€/m²") +
-  labs(title = "2021") +
-  theme_minimal()
-
-p2016 + p2021
+library(geodata)
+library(sf)
 ```
+
+```{r}
+library(viridis)
+ggplot(ppsm_variation) +
+  geom_sf(aes(fill = Prixm2_pct), color = NA) +
+  scale_fill_viridis_c(
+    option = "magma",      # red-to-yellow gradient
+    direction = -1,        # reverse so high = red, low = yellow
+    na.value = "grey90",
+    name = "% change"
+  ) +
+  labs(title = "Evolution of the average price per m² – France (2016-2021)") +
+  theme_minimal()
+```
+
 
 # Building a gentrification indicator
 
