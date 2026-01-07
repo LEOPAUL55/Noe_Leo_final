@@ -515,6 +515,237 @@ ggplot(crime_rate_change,
   theme_minimal()
 ```
 
+
+
+
+
 Now, let's compute the change in crime rate per type and compare between gentrified and non gentrified cities :
+
+```{r}
+
+crime_long <- data_final |>
+  pivot_longer(
+    cols = 8:22,
+    names_to = "crime_type",
+    values_to = "crime_count"
+  )
+
+```
+
+```{r}
+crime_change_type <- crime_long |>
+  filter(year %in% c(2016, 2021)) |>
+  select(CODGEO, year, crime_type, crime_count) |>
+  pivot_wider(
+    names_from = year,
+    values_from = crime_count,
+    names_prefix = "y_"
+  ) |>
+  mutate(
+    crime_rate_change = if_else(
+      y_2016 > 0,
+      (y_2021 - y_2016) / y_2016,
+      NA_real_
+    )
+  ) |>
+  left_join(
+    gentrif_vars |> select(CODGEO, gentrifying),
+    by = "CODGEO"
+  )
+```
+
+```{r}
+crime_change_summary <- crime_change_type |>
+  filter(is.finite(crime_rate_change)) |>
+  group_by(crime_type, gentrifying) |>
+  summarise(
+    mean_change = mean(crime_rate_change, na.rm = TRUE),
+    n_cities = n(),
+    .groups = "drop"
+  )
+```
+
+```{r}
+ggplot(crime_change_summary,
+       aes(x = crime_type,
+           y = mean_change,
+           fill = gentrifying)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    x = "Type of crime",
+    y = "Mean rate of change (2016–2021)",
+    fill = "Gentrifying city",
+    title = "Mean change in crime counts by type\n  gentrified vs non gentrified cities"
+  ) +
+  theme_minimal()
+```
+Adjusting to population : 
+
+```{r}
+crime_change_type_popadj <- data_final |>
+  pivot_longer(
+    cols = 8:22,
+    names_to = "crime_type",
+    values_to = "crime_count"
+  ) |>
+  filter(year %in% c(2016, 2021)) |>
+  select(CODGEO, year, crime_type, crime_count, insee_pop) |>
+  pivot_wider(
+    names_from = year,
+    values_from = c(crime_count, insee_pop),
+    names_sep = "_"
+  ) |>
+  mutate(
+    pop_adj_rate_change = if_else(
+      crime_count_2016 > 0 & insee_pop_2016 > 0,
+      ( (crime_count_2021 / crime_count_2016) /
+        (insee_pop_2021   / insee_pop_2016) ) - 1,
+      NA_real_
+    )
+  ) |>
+  left_join(
+    gentrif_vars |> select(CODGEO, gentrifying),
+    by = "CODGEO"
+  )
+
+crime_change_popadj_summary <- crime_change_type_popadj |>
+  filter(is.finite(pop_adj_rate_change)) |>
+  group_by(crime_type, gentrifying) |>
+  summarise(
+    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    n_cities = n(),
+    .groups = "drop"
+  )
+
+ggplot(crime_change_popadj_summary,
+       aes(x = crime_type,
+           y = mean_change,
+           fill = gentrifying)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    x = "Type of crime",
+    y = "Crime growth net of population growth (2016–2021)",
+    fill = "Gentrifying city",
+    title = "Population adjusted crime change by type\nGentrified vs nongentrified cities"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+crime_change_type_popadj_cat <- crime_change_type_popadj |>
+  mutate(
+    crime_category = case_when(
+      crime_type %in% c(
+        "Violences sexuelles",
+        "Violences physiques intrafamiliales",
+        "Violences physiques hors cadre familial",
+        "Vols avec armes",
+        "Vols violents sans arme"
+      ) ~ "Violent crimes",
+
+      crime_type %in% c(
+        "Vols sans violence contre des personnes",
+        "Vols de véhicule",
+        "Vols dans les véhicules",
+        "Vols d'accessoires sur véhicules",
+        "Cambriolages de logement",
+        "Destructions et dégradations volontaires",
+        "Escroqueries et fraudes aux moyens de paiement",
+        "Usage de stupéfiants",
+        "Trafic de stupéfiants"
+      ) ~ "Non violent crimes",
+
+      TRUE ~ NA_character_
+    )
+  )
+
+crime_change_popadj_cat_summary <- crime_change_type_popadj_cat |>
+  filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
+  group_by(crime_category, gentrifying) |>
+  summarise(
+    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    n_cities = n(),
+    .groups = "drop"
+  )
+
+ggplot(crime_change_popadj_cat_summary,
+       aes(x = crime_category,
+           y = mean_change,
+           fill = gentrifying)) +
+  geom_col(position = "dodge") +
+  labs(
+    x = "Crime category",
+    y = "Crime growth net of population growth (2016–2021)",
+    fill = "Gentrifying city",
+    title = "Population adjusted crime change by category\nGentrified vs non gentrified cities"
+  ) +
+  theme_minimal()
+```
+Crime category differences : 
+
+```{r}
+crime_category_levels <- crime_change_type_popadj_cat |>
+  filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
+  group_by(gentrifying, crime_category) |>
+  summarise(
+    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    n_obs = n(),
+    .groups = "drop"
+  )
+
+knitr::kable(
+  crime_category_levels,
+  digits = 3,
+  col.names = c(
+    "Gentrifying city",
+    "Crime category",
+    "Mean adjusted crime change",
+    "Number of city–crime observations"
+  )
+)
+
+```
+```{r}
+crime_category_diff <- crime_change_type_popadj_cat |>
+  filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
+  group_by(gentrifying, crime_category) |>
+  summarise(
+    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  pivot_wider(
+    names_from = crime_category,
+    values_from = mean_change
+  ) |>
+  mutate(
+    violent_minus_nonviolent =
+      `Violent crimes` - `Non violent crimes`,
+    violent_minus_nonviolent_pp =
+      violent_minus_nonviolent * 100
+  )
+
+knitr::kable(
+  crime_category_diff,
+  digits = 3,
+  col.names = c(
+    "Gentrifying city",
+    "Mean change – Non‑violent crimes",
+    "Mean change – Violent crimes",
+    "Violent − Non‑violent",
+    "Violent − Non‑violent (pp)"
+  )
+)
+```
+
+In non‑gentrified cities, violent crime increased substantially relative to population, while non‑violent crime slightly declined.
+
+In gentrified cities, both violent and non‑violent crimes increased relative to population, but violent crime still grew much faster.
+
+The gap between violent and non‑violent crime growth is smaller in gentrified cities : violent crime is still rising everywhere but relatively less so in gentrified cities compared to non-violent crimes.
+
+-> Between 2016 and 2021, violent crimes increased faster than non‑violent crimes in both gentrified and non‑gentrified cities, net of population growth. However, the gap between violent and non‑violent crime growth is smaller in gentrified cities, suggesting a relative moderation of violent crime dynamics in these areas.”
+
 
 
