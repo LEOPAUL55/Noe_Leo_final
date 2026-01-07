@@ -355,7 +355,80 @@ Then we will select the cities with the highest gentrification index (say top 20
 
 # Some descriptive statistics
 
+```{r}
+install.packages("geodata")
+install.packages("sf")
+library(geodata)
+library(sf)
+```
+```{r}
+city <- st_read(here("data","admin_city.gpkg"),layer = "COMMUNE")|>
+  rename(
+    CODGEO = code_insee,
+    geometry = geometrie
+  )
 
+city$CODGEO <- sprintf("%05s", city$CODGEO)
+
+data_2016 <- data_final |> filter(year == 2016)
+
+map_2016 <- city |> 
+  left_join(data_2016, by = "CODGEO")
+
+sum(!is.na(map_2016$Prixm2Moyen))
+```
+```{r}
+ggplot(map_2016) +
+  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
+  scale_fill_viridis(option = "magma",
+                     na.value = "grey90",
+                     name = "€/m²") +
+  labs(title = "Average price per m² – France (2016)") +
+  theme_minimal()
+```
+
+```{r}
+data_2021 <- data_final |> filter(year == 2021)
+
+map_2021 <- city |> 
+  left_join(data_2021, by = "CODGEO")
+
+min_price <- min(c(map_2016$Prixm2Moyen, map_2021$Prixm2Moyen), na.rm = TRUE)
+max_price <- max(c(map_2016$Prixm2Moyen, map_2021$Prixm2Moyen), na.rm = TRUE)
+
+ggplot(map_2021) +
+  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
+  scale_fill_viridis(option = "magma",
+                     limits = c(min_price, max_price),
+                     na.value = "grey90",
+                     name = "€/m²") +
+  labs(title = "Average price per m² – France (2021)") +
+  theme_minimal()
+```
+```{r}
+install.packages("patchwork")
+library(patchwork)
+
+p2016 <- ggplot(map_2016) +
+  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
+  scale_fill_viridis(option = "magma",
+                     limits = c(min_price, max_price),
+                     na.value = "grey90",
+                     name = "€/m²") +
+  labs(title = "2016") +
+  theme_minimal()
+
+p2021 <- ggplot(map_2021) +
+  geom_sf(aes(fill = Prixm2Moyen), color = NA) +
+  scale_fill_viridis(option = "magma",
+                     limits = c(min_price, max_price),
+                     na.value = "grey90",
+                     name = "€/m²") +
+  labs(title = "2021") +
+  theme_minimal()
+
+p2016 + p2021
+```
 
 # Building a gentrification indicator
 
