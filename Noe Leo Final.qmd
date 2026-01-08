@@ -410,99 +410,325 @@ ggplot(ppsm_variation_map) +
   theme_minimal()
 ```
 
-# Building a non binary gentrification index  between first year and last year
+# Building a non binary gentrification index  between first year and last year :
 
 ```{r}
+# Step 1: Create baseline and filter (NEW CODE)
+baseline <- data_final |>
+  group_by(CODGEO) |>
+  filter(year == min(year)) |>
+  ungroup() |>
+  select(CODGEO, baseline_med = MED)
+
+percentile_cutoff <- quantile(baseline$baseline_med, 0.60, na.rm = TRUE)
+
+gentrifiable_areas <- baseline |>
+  filter(baseline_med < percentile_cutoff) |>
+  pull(CODGEO)
+
+# Step 2: Evolution WITH filter
 evolution <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>   # <-- MAKE SURE THIS IS HERE
   group_by(CODGEO) |>
   summarise(
     price_var   = ((last(Prixm2Moyen) / first(Prixm2Moyen)) - 1) * 100,
     med_inc_var = (last(MED) / first(MED) - 1) * 100,
     d9_var      = (last(D9) / first(D9) - 1) * 100,
-    d1_var      = (last(D9) / first(D9) - 1) * 100,
+    d1_var      = (last(D1) / first(D1) - 1) * 100,
     pov_var     = last(TP60) - first(TP60),
     .groups = "drop"
   ) |>
   left_join(city_names, by = "CODGEO")
-```
-```{r}
+
+# Step 3: Flip signs
 evolution <- evolution |>
   mutate(
-    d1_var  = -d1_var,     # rising low-income = less gentrification
-    pov_var = -pov_var     # falling poverty = more gentrification
+    d1_var  = -d1_var,
+    pov_var = -pov_var
   )
-```
-```{r}
-# standardization
+
+# Step 4: Standardize
 evolution_std <- evolution |>
   mutate(across(
     c(price_var, med_inc_var, d9_var, d1_var, pov_var),
     scale
   ))
-```
-```{r}
-# index A (each variable weights the same)
+
+evolution_std <- evolution_std |>
+  mutate(
+    gentrification_weighted = 
+      (price_var * 0.3) +        # Emphasize housing price
+      (med_inc_var * 0.15) +     # Median income
+      (d9_var * 0.15) +          # Top income
+      (d1_var * 0.15) +          # Bottom income
+      (pov_var * 0.35)           # Poverty reduction
+  )
+
+# Step 5: Create index
 evolution_std_A <- evolution_std |>
   rowwise() |>
   mutate(
     gentrification_index = mean(c(
-      price_var,
-      med_inc_var,
-      d9_var,
-      d1_var,
-      pov_var
+      price_var, med_inc_var, d9_var, d1_var, pov_var
     ), na.rm = TRUE)
   ) |>
-  ungroup()|>
-  arrange(desc(gentrification_index)) 
-```
-```{r}
-# index B (implementing a weight to each variable)
-evolution_std_B <- evolution_std |>
-  mutate(
-    gentrification_index =
-      0.30 * price_var +
-      0.25 * med_inc_var +
-      0.20 * d9_var +
-      0.15 * d1_var +
-      0.10 * pov_var
-  )|>
-  arrange(desc(gentrification_index))
-```
-
-# Building a non binary gentrification index (year to year)
-
-```{r}
-gent_yearly <- data_final |>
-  group_by(CODGEO) |>
-  mutate(
-    price_g = log(Prixm2Moyen) - log(lag(Prixm2Moyen)),
-    med_g   = log(MED) - log(lag(MED)),
-    d9_g    = log(D9) - log(lag(D9)),
-    d1_g    = -(log(D1) - log(lag(D1))),
-    pov_g   = -(TP60 - lag(TP60))
-  ) |>
   ungroup() |>
-  group_by(year) |>
-  mutate(across(
-    c(price_g, med_g, d9_g, d1_g, pov_g),
-    scale
-  )) |>
-  rowwise() |>
+  arrange(desc(gentrification_index))
+
+# Step 6: NOW check results
+evolution_std_A |>
+  head(10) |>
+  select(CODGEO, LIBGEO, gentrification_index)
+
+# Check internal consistency
+library(psych)
+psych::alpha(evolution_std |> select(price_var, med_inc_var, d9_var, d1_var, pov_var), check.keys = TRUE)
+```
+
+Now let's compare with crimes : 
+
+```{r}
+# 1. Update evolution_std_A with 3 categories
+evolution_std_A <- evolution_std_A |>
   mutate(
-    gent_index = mean(
-      c(price_g, med_g, d9_g, d1_g, pov_g),
-      na.rm = TRUE
+    gent_category = case_when(
+      gentrification_index > quantile(gentrification_index, 0.75, na.rm = TRUE) ~ "High",
+      gentrification_index > quantile(gentrification_index, 0.25, na.rm = TRUE) ~ "Medium",
+      TRUE ~ "Low"
+    ),
+    gent_category = factor(gent_category, levels = c("Low", "Medium", "High"))
+  )
+
+# Check
+table(evolution_std_A$gent_category)
+
+# 2. REBUILD crime_rate_change_continuous with new categories
+crime_rate_change_continuous <- data_final |>
+  filter(year %in% c(2016, 2021)) |>
+  select(CODGEO, year, total_crimes, insee_pop) |>
+  pivot_wider(
+    names_from = year,
+    values_from = c(total_crimes, insee_pop),
+    names_sep = "_"
+  ) |>
+  mutate(
+    crime_rate_2016 = total_crimes_2016 / insee_pop_2016,
+    crime_rate_2021 = total_crimes_2021 / insee_pop_2021,
+    crime_rate_change = (crime_rate_2021 - crime_rate_2016) / crime_rate_2016
+  ) |>
+  left_join(
+    evolution_std_A |> select(CODGEO, gentrification_index, gent_category),
+    by = "CODGEO"
+  ) |>
+  filter(!is.na(gent_category))
+
+# Check
+table(crime_rate_change_continuous$gent_category)
+
+# 3. Plot ONLY Low and High
+ggplot(crime_rate_change_continuous |> filter(gent_category %in% c("Low", "High")),
+       aes(x = gent_category, y = crime_rate_change, fill = gent_category)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("Low" = "steelblue", "High" = "red")) +
+  labs(
+    x = "Gentrification Intensity",
+    y = "Crime Rate Change (2016–2021)",
+    title = "Crime Rate Evolution by Gentrification Intensity",
+    subtitle = "Comparing extremes: Low (bottom 25%) vs High (top 25%)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+
+```{r}
+ggplot(crime_rate_change_continuous,
+       aes(x = gentrification_index, y = crime_rate_change)) +
+  geom_point(alpha = 0.5, color = "steelblue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    x = "Gentrification Index",
+    y = "Crime Rate Change (2016–2021)",
+    title = "Relationship Between Gentrification and Crime Change",
+    subtitle = "Among initially modest cities (bottom 60% baseline income)"
+  ) +
+  theme_minimal()
+```
+```{r}
+crime_change_type_continuous <- data_final |>
+  pivot_longer(
+    cols = 8:22,
+    names_to = "crime_type",
+    values_to = "crime_count"
+  ) |>
+  filter(year %in% c(2016, 2021)) |>
+  select(CODGEO, year, crime_type, crime_count, insee_pop) |>
+  pivot_wider(
+    names_from = year,
+    values_from = c(crime_count, insee_pop),
+    names_sep = "_"
+  ) |>
+  mutate(
+    pop_adj_rate_change = if_else(
+      crime_count_2016 > 0 & insee_pop_2016 > 0,
+      ((crime_count_2021 / crime_count_2016) /
+       (insee_pop_2021 / insee_pop_2016)) - 1,
+      NA_real_
     )
   ) |>
-  ungroup()
+  left_join(
+    evolution_std_A |> select(CODGEO, gentrification_index, gent_category),
+    by = "CODGEO"
+  ) |>
+  filter(!is.na(gent_category))
+
+# Summary by crime type and category
+crime_change_type_summary <- crime_change_type_continuous |>
+  filter(is.finite(pop_adj_rate_change)) |>
+  group_by(crime_type, gent_category) |>
+  summarise(
+    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    n_cities = n(),
+    .groups = "drop"
+  )
+
+# Plot
+ggplot(crime_change_type_summary,
+       aes(x = crime_type, y = mean_change, fill = gent_category)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
+  labs(
+    x = "Type of Crime",
+    y = "Population-Adjusted Crime Change (2016–2021)",
+    fill = "Gentrification\nIntensity",
+    title = "Crime Change by Type and Gentrification Intensity"
+  ) +
+  theme_minimal()
 ```
+Creating crime categories (excluding sexual violences) :
 ```{r}
-summary(gent_yearly$gent_index)
-hist(gent_yearly$gent_index, breaks = 50)
+crime_change_type_cat <- crime_change_type_continuous |>
+  mutate(
+    crime_category = case_when(
+      crime_type %in% c(
+       
+        "Violences physiques intrafamiliales",
+        "Violences physiques hors cadre familial",
+        "Vols avec armes",
+        "Vols violents sans arme"
+      ) ~ "Violent crimes",
+      crime_type %in% c(
+        "Vols sans violence contre des personnes",
+        "Vols de véhicule",
+        "Vols dans les véhicules",
+        "Vols d'accessoires sur véhicules",
+        "Cambriolages de logement",
+        "Destructions et dégradations volontaires",
+        "Escroqueries et fraudes aux moyens de paiement",
+        "Usage de stupéfiants",
+        "Trafic de stupéfiants"
+      ) ~ "Non violent crimes",
+      TRUE ~ NA_character_
+    )
+  )
+
+crime_cat_summary <- crime_change_type_cat |>
+  filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
+  group_by(crime_category, gent_category) |>
+  summarise(
+    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    n_obs = n(),
+    .groups = "drop"
+  )
+
+# Plot
+ggplot(crime_cat_summary,
+       aes(x = crime_category, y = mean_change, fill = gent_category)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
+  labs(
+    x = "Crime Category",
+    y = "Population-Adjusted Crime Change (2016–2021)",
+    fill = "Gentrification\nIntensity",
+    title = "Violent vs Non-Violent Crime Change\nby Gentrification Intensity"
+  ) +
+  theme_minimal()
+
+# Table
+knitr::kable(
+  crime_cat_summary,
+  digits = 3,
+  col.names = c("Crime Category", "Gentrification Level", "Mean Change", "N Observations")
+)
 ```
 
-# Building a gentrification indicator
+Let's check if the changes are significant : 
+
+For all types of crime : 
+```{r}
+# ANOVA test
+anova_result <- aov(crime_rate_change ~ gent_category, data = crime_rate_change_continuous)
+summary(anova_result)
+
+# Pairwise comparisons
+TukeyHSD(anova_result)
+
+# Or simple correlation test
+cor.test(
+  crime_rate_change_continuous$gentrification_index,
+  crime_rate_change_continuous$crime_rate_change,
+  use = "complete.obs"
+)
+```
+-> nothing is significant
+
+```{r}
+# Test for violent crimes only
+violent_data <- crime_change_type_cat |>
+  filter(crime_category == "Violent crimes", is.finite(pop_adj_rate_change)) |>
+  group_by(CODGEO, gent_category) |>
+  summarise(mean_change = mean(pop_adj_rate_change), .groups = "drop")
+
+summary(aov(mean_change ~ gent_category, data = violent_data))
+```
+-> not significant
+
+```{r}
+violent_anova <- aov(mean_change ~ gent_category, data = violent_data)
+TukeyHSD(violent_anova)
+```
+-> not significant
+
+Plotting violent crime growth among gentrification intensities categories :
+```{r}
+# Get the means for the plot
+violent_summary <- violent_data |>
+  group_by(gent_category) |>
+  summarise(
+    mean_change = mean(mean_change, na.rm = TRUE),
+    se = sd(mean_change, na.rm = TRUE) / sqrt(n()),
+    n = n()
+  )
+
+ggplot(violent_summary, aes(x = gent_category, y = mean_change, fill = gent_category)) +
+  geom_col(alpha = 0.8) +
+  geom_errorbar(aes(ymin = mean_change - 1.96*se, ymax = mean_change + 1.96*se), 
+                width = 0.2) +
+  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
+  labs(
+    x = "Gentrification Intensity",
+    y = "Mean Violent Crime Change (Pop-Adjusted)",
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+
+
+# Building a binary gentrification indicator
 
 In order to build our gentrification indicator, we'll have to compute the changes between 2016 and 2021 for the variables that we're interested in.
 
