@@ -743,28 +743,33 @@ The gap between violent and non‑violent crime growth is smaller in gentrified 
 
 -> Between 2016 and 2021, violent crimes increased faster than non‑violent crimes in both gentrified and non‑gentrified cities, net of population growth. However, the gap between violent and non‑violent crime growth is smaller in gentrified cities, suggesting a relative moderation of violent crime dynamics in these areas.”
 
+# Building a non binary gentrification index between first year and last year and checking for correlation with change in crime rate.
 
+## Building a non binary gentrification index  between first year and last year :
 
-
-# Building a non binary gentrification index  between first year and last year :
-
+Identifying areas that could gentrify :
 ```{r}
-# Step 1: Create baseline and filter (NEW CODE)
+#Taking the earliest year of data for each demographic area (CODGEO)
 baseline <- data_final |>
   group_by(CODGEO) |>
   filter(year == min(year)) |>
+  #capturing the median income as the starting point
   ungroup() |>
   select(CODGEO, baseline_med = MED)
 
+#Making sure only areas below the "60% of median income" threshold are considered "gentrifiable" (by definition, only lower income areas can gentrify)
 percentile_cutoff <- quantile(baseline$baseline_med, 0.60, na.rm = TRUE)
+```
 
+Calculating changes over time :
+```{r}
 gentrifiable_areas <- baseline |>
   filter(baseline_med < percentile_cutoff) |>
   pull(CODGEO)
 
-# Step 2: Evolution WITH filter
+# Calculating percentage changes from first to last year
 evolution <- data_final |>
-  filter(CODGEO %in% gentrifiable_areas) |>   # <-- MAKE SURE THIS IS HERE
+  filter(CODGEO %in% gentrifiable_areas) |>  
   group_by(CODGEO) |>
   summarise(
     price_var   = ((last(Prixm2Moyen) / first(Prixm2Moyen)) - 1) * 100,
@@ -776,52 +781,58 @@ evolution <- data_final |>
   ) |>
   left_join(city_names, by = "CODGEO")
 
-# Step 3: Flip signs
+# Flipping signs for interpretation : making increases in low incomes and decrease in poverty show as positive values: this aligns indicators so higher values = more gentrification
 evolution <- evolution |>
   mutate(
     d1_var  = -d1_var,
     pov_var = -pov_var
   )
+```
 
-# Step 4: Standardize
+Standardizing the variables :
+```{r}
+# Converting all the variables to z-score so it makes the different metrics comparable despite different scales 
 evolution_std <- evolution |>
   mutate(across(
     c(price_var, med_inc_var, d9_var, d1_var, pov_var),
     scale
   ))
+```
 
-# Step 5: Create WEIGHTED index
+Creating a weighted gentrification index
+```{r}
 evolution_std <- evolution_std |>
   mutate(
     gentrification_index = 
       (price_var * 0.25) +        # Emphasize housing price
-      (med_inc_var * 0.2) +     # Median income (excluded)
-      (d9_var * 0.1) +          # Top income (excluded)
+      (med_inc_var * 0.2) +     # Median income 
+      (d9_var * 0.1) +          # Top income 
       (d1_var * 0.35) +          # Bottom income
-      (pov_var * 0.10)           # Poverty reduction (excluded)
+      (pov_var * 0.10)           # Poverty reduction 
   )
 
 
-# Arrange by weighted index
+# Sorting areas by gentrification intensity
 evolution_std <- evolution_std |>
   arrange(desc(gentrification_index))
 evolution_std_A <- evolution_std
 
-# Step 6: NOW check results
+# Displaying most gentrified areas
 evolution_std_A |>
   head(10) |>
   select(CODGEO, LIBGEO, gentrification_index)
 
-# Check internal consistency
+# Checking the validity of the index using Cronbach's alpha 
 library(psych)
 psych::alpha(evolution_std |> select(price_var, med_inc_var, d9_var, d1_var, pov_var), check.keys = TRUE)
+
 ```
+-> The Cronbach's alpha test tells us that the indicator we used is valid and reliable, and that all indicators contribute meaningfully 
 
+## Checking for correlations with crime
 
-Now let's compare with crimes : 
-
+Creating gentrification categories : 
 ```{r}
-# 1. Update evolution_std_A with 3 categories
 evolution_std_A_groups <- evolution_std_A |>
   mutate(
     gent_category = case_when(
@@ -832,10 +843,16 @@ evolution_std_A_groups <- evolution_std_A |>
     gent_category = factor(gent_category, levels = c("Low", "Medium", "High"))
   )
 
-# Check
 table(evolution_std_A_groups$gent_category)
+```
+Low = bottom 25% gentrified cities
+Medium = middle 50% gentrified cities
+high = top 25% gentrified cities
+(among the "gentrifiable" cities)
 
-# 2. REBUILD crime_rate_change_continuous with new categories
+Calculating crime rate changes
+```{r}
+#Restructuring data to have 2016 and 2021 side by side for comparison
 crime_rate_change_continuous <- data_final |>
   filter(year %in% c(2016, 2021)) |>
   select(CODGEO, year, total_crimes, insee_pop) |>
@@ -845,50 +862,100 @@ crime_rate_change_continuous <- data_final |>
     names_sep = "_"
   ) |>
   mutate(
+    # Calculating crime rates per capita for both years
     crime_rate_2016 = total_crimes_2016 / insee_pop_2016,
     crime_rate_2021 = total_crimes_2021 / insee_pop_2021,
+    # Computing percentage change in crime rate over the 5-year period
     crime_rate_change = (crime_rate_2021 - crime_rate_2016) / crime_rate_2016
   ) |>
+  
+  # Merging datasets : combining crime data with gentrification categories - each area has now its crime change and gentrification level 
+  
   left_join(
     evolution_std_A_groups |> select(CODGEO, gentrification_index, gent_category),
     by = "CODGEO"
   ) |>
   filter(!is.na(gent_category))
 
-# Check
-table(crime_rate_change_continuous$gent_category)
-
-# 3. Plot ONLY Low and High
-ggplot(crime_rate_change_continuous |> filter(gent_category %in% c("Low", "High", "Medium")),
-       aes(x = gent_category, y = crime_rate_change, fill = gent_category)) +
-  geom_boxplot(alpha = 0.7) +
-  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = 'yellow', "High" = "red")) +
-  labs(
-    x = "Gentrification Intensity",
-    y = "Crime Rate Change (2016–2021)",
-    title = "Crime Rate Evolution by Gentrification Intensity",
-    subtitle = "Comparing extremes: Low (bottom 25%) vs High (top 25%)"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
 ```
 
-
-
+Scatter plot of the crime rate change compared to the gentrification index
 ```{r}
+library(viridis)
+
 ggplot(crime_rate_change_continuous,
        aes(x = gentrification_index, y = crime_rate_change)) +
-  geom_point(alpha = 0.5, color = "steelblue") +
-  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  geom_point(aes(color = gentrification_index), 
+             alpha = 0.6, size = 2.5) +
+  scale_color_viridis_c(option = "plasma", name = "Gentrification\nIntensity") +
+  geom_smooth(method = "lm", color = "#FF6B6B", size = 1.2, 
+              fill = "#FF6B6B", alpha = 0.15) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.3, color = "gray40") +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.3, color = "gray40") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  coord_cartesian(ylim = c(-0.5, 0.5)) +
   labs(
-    x = "Gentrification Index",
-    y = "Crime Rate Change (2016–2021)",
-    title = "Relationship Between Gentrification and Crime Change",
-    subtitle = "Among initially modest cities (bottom 60% baseline income)"
+    x = "Gentrification Index (standardized)",
+    y = "Crime Rate Change (2016-2021)",
+    title = "Small Link Between Gentrification and Crime Changes",
+    subtitle = "Analysis of initially lower-income areas (bottom 60% baseline income)",
+    caption = "Each point represents one geographic area | Red line shows linear trend"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0),
+    plot.subtitle = element_text(size = 12, color = "gray40", hjust = 0),
+    panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
 ```
+
+Plotting the crime rate change among the three gentrification levels :
 ```{r}
+# Calculate confidence intervals
+ci_stats <- crime_rate_change_continuous |>
+  group_by(gent_category) |>
+  summarise(
+    mean = mean(crime_rate_change, na.rm = TRUE),
+    ci_lower = mean - 1.96 * sd(crime_rate_change, na.rm = TRUE) / sqrt(n()),
+    ci_upper = mean + 1.96 * sd(crime_rate_change, na.rm = TRUE) / sqrt(n()),
+    median = median(crime_rate_change, na.rm = TRUE)
+  )
+
+ggplot(ci_stats |> filter(gent_category %in% c("Low", "High", "Medium")),
+       aes(x = gent_category, y = mean, color = gent_category)) +
+  # CI lines
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0, size = 2, alpha = 0.4) +
+  # Mean points
+  geom_point(size = 8) +
+  # Median points
+  geom_point(aes(y = median), shape = 1, size = 8, stroke = 1.5) +
+  scale_color_manual(values = c("Low" = "#3498db", "Medium" = "#f39c12", "High" = "#e74c3c")) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.3) +
+  coord_cartesian(ylim = c(-0.1, 0.1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  labs(
+    x = NULL,
+    y = "Crime Rate Change (2016–2021)",
+    title = "Mean Crime Rate Changes Across Gentrification Levels",
+    subtitle = "Solid dots = mean | Hollow circles = median | Lines = 95% CI",
+    
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 11, color = "gray40"),
+    axis.text.x = element_text(size = 14, face = "bold"),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+Crime change by type and gentrification intensity
+```{r}
+
+# Reshaping crime data per type
 crime_change_type_continuous <- data_final |>
   pivot_longer(
     cols = 8:22,
@@ -897,11 +964,14 @@ crime_change_type_continuous <- data_final |>
   ) |>
   filter(year %in% c(2016, 2021)) |>
   select(CODGEO, year, crime_type, crime_count, insee_pop) |>
+  
+  # Creating year-over-year comparison
   pivot_wider(
     names_from = year,
     values_from = c(crime_count, insee_pop),
     names_sep = "_"
   ) |>
+  # Calculating poopulation-adjusted change
   mutate(
     pop_adj_rate_change = if_else(
       crime_count_2016 > 0 & insee_pop_2016 > 0,
@@ -910,13 +980,14 @@ crime_change_type_continuous <- data_final |>
       NA_real_
     )
   ) |>
+  # Merging with gentrification levels
   left_join(
     evolution_std_A_groups |> select(CODGEO, gentrification_index, gent_category),
     by = "CODGEO"
   ) |>
   filter(!is.na(gent_category))
 
-# Summary by crime type and category
+# Summary by crime type and gentrification level
 crime_change_type_summary <- crime_change_type_continuous |>
   filter(is.finite(pop_adj_rate_change)) |>
   group_by(crime_type, gent_category) |>
@@ -942,6 +1013,8 @@ ggplot(crime_change_type_summary,
 ```
 Creating crime categories (excluding sexual violences) :
 ```{r}
+
+# Creating crime categories 
 crime_change_type_cat <- crime_change_type_continuous |>
   mutate(
     crime_category = case_when(
@@ -966,7 +1039,12 @@ crime_change_type_cat <- crime_change_type_continuous |>
       TRUE ~ NA_character_
     )
   )
+```
 
+Summarizing by category :
+```{r}
+
+# Calculating the median population adjusted change for each combination of crime category and gentrification level
 crime_cat_summary <- crime_change_type_cat |>
   filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
   group_by(crime_category, gent_category) |>
@@ -975,7 +1053,10 @@ crime_cat_summary <- crime_change_type_cat |>
     n_obs = n(),
     .groups = "drop"
   )
+```
 
+Violent vs non violent crime change by gentrification intensity : 
+```{r}
 # Plot
 ggplot(crime_cat_summary,
        aes(x = crime_category, y = median_change, fill = gent_category)) +
@@ -996,19 +1077,19 @@ knitr::kable(
   col.names = c("Crime Category", "Gentrification Level", "Mean Change", "N Observations")
 )
 ```
+-> while non violent crimes rate decreases and violent crime rate increases for all groups, violent crimees increases less as gentrification intensifies
+
 
 Let's check if the changes are significant : 
 
-For all types of crime : 
+:
 ```{r}
-# ANOVA test
+# Tests whether crime rate changes differ significantly across the three gentrification levels
+
 anova_result <- aov(crime_rate_change ~ gent_category, data = crime_rate_change_continuous)
 summary(anova_result)
 
-# Pairwise comparisons
-TukeyHSD(anova_result)
-
-# Or simple correlation test
+# Tests wether there's a linear relationship between gentrification intensity and crime change 
 cor.test(
   crime_rate_change_continuous$gentrification_index,
   crime_rate_change_continuous$crime_rate_change,
@@ -1018,19 +1099,14 @@ cor.test(
 -> nothing is significant
 
 ```{r}
-# Test for violent crimes only
+# Checking only for violent crimes
+
 violent_data <- crime_change_type_cat |>
   filter(crime_category == "Violent crimes", is.finite(pop_adj_rate_change)) |>
   group_by(CODGEO, gent_category) |>
-  summarise(mean_change = mean(pop_adj_rate_change), .groups = "drop")
+  summarise(median_change = median(pop_adj_rate_change), .groups = "drop")  # <- median here
 
-summary(aov(mean_change ~ gent_category, data = violent_data))
-```
--> not significant
-
-```{r}
-violent_anova <- aov(mean_change ~ gent_category, data = violent_data)
-TukeyHSD(violent_anova)
+summary(aov(median_change ~ gent_category, data = violent_data))
 ```
 -> not significant
 
@@ -1040,11 +1116,11 @@ Plotting violent crime growth among gentrification intensities categories :
 violent_summary <- violent_data |>
   group_by(gent_category) |>
   summarise(
-    median_change = median(mean_change, na.rm = TRUE),
+    median_change = median(median_change, na.rm = TRUE),
     # For error bars around median, we can use bootstrapped confidence intervals
     # or use IQR/quantiles instead of SE
-    q25 = quantile(mean_change, 0.25, na.rm = TRUE),
-    q75 = quantile(mean_change, 0.75, na.rm = TRUE),
+    q25 = quantile(median_change, 0.25, na.rm = TRUE),
+    q75 = quantile(median_change, 0.75, na.rm = TRUE),
     n = n()
   )
 
@@ -1068,20 +1144,20 @@ Overall test: Are there differences between groups?
 ```{r}
 library(ggsignif)
 
-kruskal_test <- kruskal.test(mean_change ~ gent_category, data = violent_data)
+kruskal_test <- kruskal.test(median_change ~ gent_category, data = violent_data)
 print(kruskal_test)
 
 library(FSA)
 
 # Dunn's test with Bonferroni correction
-dunn_test <- dunnTest(mean_change ~ gent_category, 
+dunn_test <- dunnTest(median_change ~ gent_category, 
                       data = violent_data,
                       method = "bonferroni")
 print(dunn_test)
 
 # Or pairwise Wilcoxon tests
 pairwise_results <- pairwise.wilcox.test(
-  violent_data$mean_change,
+  violent_data$median_change,
   violent_data$gent_category,
   p.adjust.method = "bonferroni"
 )
@@ -1124,59 +1200,20 @@ ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_ca
   theme(legend.position = "none")
 
 ```
--> not significant
+-> There is a significant difference between high group and low group
 
 Pairwise wilcox test : 
-
 ```{r}
-pairwise.wilcox.test(violent_data$mean_change,
+pairwise.wilcox.test(violent_data$median_change,
                     violent_data$gent_category,
                     p.adjust.method = "BH")
 
 # Calculate y positions
 y_max <- max(violent_summary$median_change + violent_summary$q75, na.rm = TRUE)
 
-ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_category)) +
-  geom_col(alpha = 0.8) +
-  geom_errorbar(aes(ymin = q25, ymax = q75), width = 0.2, size = 0.8) +
   
-  # Add significance brackets
-  # Low vs High
-  annotate("segment", 
-           x = 1, xend = 3,
-           y = y_max * 1.15,
-           yend = y_max * 1.15,
-           size = 0.5) +
-  annotate("text",
-           x = 2, y = y_max * 1.20,
-           label = "*",
-           size = 8) +
-  
-  # Medium vs High
-  annotate("segment", 
-           x = 2, xend = 3,
-           y = y_max * 1.25,
-           yend = y_max * 1.25,
-           size = 0.5) +
-  annotate("text",
-           x = 2.5, y = y_max * 1.30,
-           label = "*",
-           size = 8) +
-  
-  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
-  labs(
-    x = "Gentrification Intensity",
-    y = "Median Violent Crime Change",
-    subtitle = "Kruskal-Wallis: χ²(2) = 6.97, p = 0.031*",
-    caption = paste("*p < 0.05 (BH-adjusted);",
-                   "Low vs High: p = 0.033,",
-                   "Medium vs High: p = 0.033")
-  ) +
-  ylim(0, y_max * 1.35) +  # Make room for annotations
-  theme_minimal() +
-  theme(legend.position = "none")
 ```
--> significant
+-> significant for High-Low
 
 
 
