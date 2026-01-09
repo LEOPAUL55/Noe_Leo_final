@@ -477,8 +477,42 @@ evolution_std_A |>
   select(CODGEO, LIBGEO, gentrification_index)
 
 # Check internal consistency
+install.packages("psych")
 library(psych)
 psych::alpha(evolution_std |> select(price_var, med_inc_var, d9_var, d1_var, pov_var), check.keys = TRUE)
+```
+
+# Building a non binary gentrification index (year to year)
+
+```{r}
+gent_yearly <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>
+  group_by(CODGEO) |>
+  mutate(
+    price_g = log(Prixm2Moyen) - log(lag(Prixm2Moyen)),
+    med_g   = log(MED) - log(lag(MED)),
+    d9_g    = log(D9) - log(lag(D9)),
+    d1_g    = -(log(D1) - log(lag(D1))),
+    pov_g   = -(TP60 - lag(TP60))
+  ) |>
+  ungroup() |>
+  group_by(year) |>
+  mutate(across(
+    c(price_g, med_g, d9_g, d1_g, pov_g),
+    scale
+  )) |>
+  rowwise() |>
+  mutate(
+    gent_index = mean(
+      c(price_g, med_g, d9_g, d1_g, pov_g),
+      na.rm = TRUE
+    )
+  ) |>
+  ungroup()
+```
+```{r}
+summary(gent_yearly$gent_index)
+hist(gent_yearly$gent_index, breaks = 50)
 ```
 
 Now let's compare with crimes : 
