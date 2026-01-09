@@ -887,7 +887,7 @@ ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_ca
 
 # Building a binary gentrification indicator
 
-In order to build our gentrification indicator, we'll have to compute the changes between 2016 and 2021 for the variables that we're interested in.
+In order to build our gentrification indicator, we'll have to compute the changes between 2016 and 2021 for the variables that we're interested in. 
 
 ```{r}
 # Keep only endpoints
