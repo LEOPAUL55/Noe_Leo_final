@@ -454,26 +454,22 @@ evolution_std <- evolution |>
     scale
   ))
 
+# Step 5: Create WEIGHTED index
 evolution_std <- evolution_std |>
   mutate(
-    gentrification_weighted = 
-      (price_var * 0.3) +        # Emphasize housing price
-      (med_inc_var * 0.15) +     # Median income
-      (d9_var * 0.15) +          # Top income
-      (d1_var * 0.15) +          # Bottom income
-      (pov_var * 0.35)           # Poverty reduction
+    gentrification_index = 
+      (price_var * 0.25) +        # Emphasize housing price
+      (med_inc_var * 0.2) +     # Median income (excluded)
+      (d9_var * 0.1) +          # Top income (excluded)
+      (d1_var * 0.35) +          # Bottom income
+      (pov_var * 0.10)           # Poverty reduction (excluded)
   )
 
-# Step 5: Create index
-evolution_std_A <- evolution_std |>
-  rowwise() |>
-  mutate(
-    gentrification_index = mean(c(
-      price_var, med_inc_var, d9_var, d1_var, pov_var
-    ), na.rm = TRUE)
-  ) |>
-  ungroup() |>
+
+# Arrange by weighted index
+evolution_std <- evolution_std |>
   arrange(desc(gentrification_index))
+evolution_std_A <- evolution_std
 
 # Step 6: NOW check results
 evolution_std_A |>
@@ -489,7 +485,7 @@ Now let's compare with crimes :
 
 ```{r}
 # 1. Update evolution_std_A with 3 categories
-evolution_std_A <- evolution_std_A |>
+evolution_std_A_groups <- evolution_std_A |>
   mutate(
     gent_category = case_when(
       gentrification_index > quantile(gentrification_index, 0.75, na.rm = TRUE) ~ "High",
@@ -500,7 +496,7 @@ evolution_std_A <- evolution_std_A |>
   )
 
 # Check
-table(evolution_std_A$gent_category)
+table(evolution_std_A_groups$gent_category)
 
 # 2. REBUILD crime_rate_change_continuous with new categories
 crime_rate_change_continuous <- data_final |>
@@ -517,7 +513,7 @@ crime_rate_change_continuous <- data_final |>
     crime_rate_change = (crime_rate_2021 - crime_rate_2016) / crime_rate_2016
   ) |>
   left_join(
-    evolution_std_A |> select(CODGEO, gentrification_index, gent_category),
+    evolution_std_A_groups |> select(CODGEO, gentrification_index, gent_category),
     by = "CODGEO"
   ) |>
   filter(!is.na(gent_category))
@@ -526,10 +522,10 @@ crime_rate_change_continuous <- data_final |>
 table(crime_rate_change_continuous$gent_category)
 
 # 3. Plot ONLY Low and High
-ggplot(crime_rate_change_continuous |> filter(gent_category %in% c("Low", "High")),
+ggplot(crime_rate_change_continuous |> filter(gent_category %in% c("Low", "High", "Medium")),
        aes(x = gent_category, y = crime_rate_change, fill = gent_category)) +
   geom_boxplot(alpha = 0.7) +
-  scale_fill_manual(values = c("Low" = "steelblue", "High" = "red")) +
+  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = 'yellow', "High" = "red")) +
   labs(
     x = "Gentrification Intensity",
     y = "Crime Rate Change (2016–2021)",
@@ -578,7 +574,7 @@ crime_change_type_continuous <- data_final |>
     )
   ) |>
   left_join(
-    evolution_std_A |> select(CODGEO, gentrification_index, gent_category),
+    evolution_std_A_groups |> select(CODGEO, gentrification_index, gent_category),
     by = "CODGEO"
   ) |>
   filter(!is.na(gent_category))
@@ -588,14 +584,14 @@ crime_change_type_summary <- crime_change_type_continuous |>
   filter(is.finite(pop_adj_rate_change)) |>
   group_by(crime_type, gent_category) |>
   summarise(
-    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    median_change = median(pop_adj_rate_change, na.rm = TRUE),
     n_cities = n(),
     .groups = "drop"
   )
 
 # Plot
 ggplot(crime_change_type_summary,
-       aes(x = crime_type, y = mean_change, fill = gent_category)) +
+       aes(x = crime_type, y = median_change, fill = gent_category)) +
   geom_col(position = "dodge") +
   coord_flip() +
   scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
@@ -638,14 +634,14 @@ crime_cat_summary <- crime_change_type_cat |>
   filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
   group_by(crime_category, gent_category) |>
   summarise(
-    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
+    median_change = median(pop_adj_rate_change, na.rm = TRUE),
     n_obs = n(),
     .groups = "drop"
   )
 
 # Plot
 ggplot(crime_cat_summary,
-       aes(x = crime_category, y = mean_change, fill = gent_category)) +
+       aes(x = crime_category, y = median_change, fill = gent_category)) +
   geom_col(position = "dodge") +
   scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
   labs(
@@ -703,27 +699,154 @@ TukeyHSD(violent_anova)
 
 Plotting violent crime growth among gentrification intensities categories :
 ```{r}
-# Get the means for the plot
+# Get the medians for the plot
 violent_summary <- violent_data |>
   group_by(gent_category) |>
   summarise(
-    mean_change = mean(mean_change, na.rm = TRUE),
-    se = sd(mean_change, na.rm = TRUE) / sqrt(n()),
+    median_change = median(mean_change, na.rm = TRUE),
+    # For error bars around median, we can use bootstrapped confidence intervals
+    # or use IQR/quantiles instead of SE
+    q25 = quantile(mean_change, 0.25, na.rm = TRUE),
+    q75 = quantile(mean_change, 0.75, na.rm = TRUE),
     n = n()
   )
 
-ggplot(violent_summary, aes(x = gent_category, y = mean_change, fill = gent_category)) +
+# Plot with median and IQR bars
+ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_category)) +
   geom_col(alpha = 0.8) +
-  geom_errorbar(aes(ymin = mean_change - 1.96*se, ymax = mean_change + 1.96*se), 
-                width = 0.2) +
+  # Use IQR as error bars (shows middle 50% of data)
+  geom_errorbar(aes(ymin = q25, ymax = q75), 
+                width = 0.2, linewidth = 0.8) +
   scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
   labs(
     x = "Gentrification Intensity",
-    y = "Mean Violent Crime Change (Pop-Adjusted)",
+    y = "Median Violent Crime Change (Pop-Adjusted)",
+    caption = "Error bars show interquartile range (25th-75th percentiles)"
   ) +
   theme_minimal() +
   theme(legend.position = "none")
 ```
+```{r}
+# Install if not already installed
+install.packages("ggsignif")
+
+# Load the package
+library(ggsignif)
+```
+
+```{r}
+# Overall test: Are there differences between groups?
+kruskal_test <- kruskal.test(mean_change ~ gent_category, data = violent_data)
+print(kruskal_test)
+
+library(FSA)
+
+# Dunn's test with Bonferroni correction
+dunn_test <- dunnTest(mean_change ~ gent_category, 
+                      data = violent_data,
+                      method = "bonferroni")
+print(dunn_test)
+
+# Or pairwise Wilcoxon tests
+pairwise_results <- pairwise.wilcox.test(
+  violent_data$mean_change,
+  violent_data$gent_category,
+  p.adjust.method = "bonferroni"
+)
+print(pairwise_results)
+
+# Epsilon-squared effect size
+n_total <- nrow(violent_data)
+chi_squared <- 6.9672
+df <- 2
+epsilon_squared <- (chi_squared - df + 1) / (n_total - df)
+print(paste("Effect size (ε²):", round(epsilon_squared, 3)))
+
+# Interpret:
+# ε² < 0.06: Small effect
+# 0.06 ≤ ε² < 0.14: Medium effect  
+# ε² ≥ 0.14: Large effect
+
+# After running pairwise tests, add significance stars
+# Example if High vs Low is significant:
+ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_category)) +
+  geom_col(alpha = 0.8) +
+  geom_errorbar(aes(ymin = q25, ymax = q75), width = 0.2, size = 0.8) +
+  
+  # Add significance annotation (adjust based on your pairwise results)
+  geom_signif(
+    comparisons = list(c("Low", "High")),
+    annotations = "*",
+    y_position = max(violent_summary$q75) * 1.1,
+    tip_length = 0.01
+  ) +
+  
+  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
+  labs(
+    x = "Gentrification Intensity",
+    y = "Median Violent Crime Change",
+    subtitle = "Kruskal-Wallis: χ²(2) = 6.97, p = 0.031*",
+    caption = "*Significant at p < 0.05 level"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+-> not significant
+
+Pairwise wilcox test : 
+
+```{r}
+pairwise.wilcox.test(violent_data$mean_change,
+                    violent_data$gent_category,
+                    p.adjust.method = "BH")
+
+# Calculate y positions
+y_max <- max(violent_summary$median_change + violent_summary$q75, na.rm = TRUE)
+
+ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_category)) +
+  geom_col(alpha = 0.8) +
+  geom_errorbar(aes(ymin = q25, ymax = q75), width = 0.2, size = 0.8) +
+  
+  # Add significance brackets
+  # Low vs High
+  annotate("segment", 
+           x = 1, xend = 3,
+           y = y_max * 1.15,
+           yend = y_max * 1.15,
+           size = 0.5) +
+  annotate("text",
+           x = 2, y = y_max * 1.20,
+           label = "*",
+           size = 8) +
+  
+  # Medium vs High
+  annotate("segment", 
+           x = 2, xend = 3,
+           y = y_max * 1.25,
+           yend = y_max * 1.25,
+           size = 0.5) +
+  annotate("text",
+           x = 2.5, y = y_max * 1.30,
+           label = "*",
+           size = 8) +
+  
+  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
+  labs(
+    x = "Gentrification Intensity",
+    y = "Median Violent Crime Change",
+    subtitle = "Kruskal-Wallis: χ²(2) = 6.97, p = 0.031*",
+    caption = paste("*p < 0.05 (BH-adjusted);",
+                   "Low vs High: p = 0.033,",
+                   "Medium vs High: p = 0.033")
+  ) +
+  ylim(0, y_max * 1.35) +  # Make room for annotations
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+-> significant
+
+
 
 
 
