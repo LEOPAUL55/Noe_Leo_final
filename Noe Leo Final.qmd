@@ -2,6 +2,9 @@
 title: "Noe Leo Final"
 author: "Léo-Paul Garelli and Noé Mansuy"
 format: html
+editor: 
+  markdown: 
+    wrap: 72
 ---
 
 Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
@@ -27,7 +30,12 @@ Source : https://www.insee.fr/fr/statistiques/5650720
 
 This is the 2018 population by IRIS code. Made by the INSEE.
 
-Because the 2018 income data is available by IRIS code rather than by GEO code, we need to weight each IRIS-level mean by its 2018 population in order to compute the correct city-level values. Since the 2018 population data at the IRIS level is available for only 994 of the cities included in the other years, we will have to restrict our analysis to these 994 cities.
+Because the 2018 income data is available by IRIS code rather than by
+GEO code, we need to weight each IRIS-level mean by its 2018 population
+in order to compute the correct city-level values. Since the 2018
+population data at the IRIS level is available for only 994 of the
+cities included in the other years, we will have to restrict our
+analysis to these 994 cities.
 
 ```{r}
 pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
@@ -37,11 +45,19 @@ pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
 
 ## Real estate prices
 
-Source : https://www.data.gouv.fr/datasets/indicateurs-immobiliers-par-commune-et-par-annee-prix-et-volumes-sur-la-periode-2014-2024
+Source :
+https://www.data.gouv.fr/datasets/indicateurs-immobiliers-par-commune-et-par-annee-prix-et-volumes-sur-la-periode-2014-2024
 
-This is a collection of various variables on residential housing market at the city level between 2014 and 2024. What is interesting for us is the mean price by square meter of the goods that have been sold each year. This was published by Boris Mericksay
+This is a collection of various variables on residential housing market
+at the city level between 2014 and 2024. What is interesting for us is
+the mean price by square meter of the goods that have been sold each
+year. This was published by Boris Mericksay
 
-Real‑estate price data are provided as separate yearly CSV files. To improve efficiency and avoid redundant code, we use vroom’s multi‑file loading functionality to read all files simultaneously. The year is extracted from the file name, and city identifiers are harmonized to allow consistent merging with other datasets.
+Real‑estate price data are provided as separate yearly CSV files. To
+improve efficiency and avoid redundant code, we use vroom’s multi‑file
+loading functionality to read all files simultaneously. The year is
+extracted from the file name, and city identifiers are harmonized to
+allow consistent merging with other datasets.
 
 ```{r}
 ppsm <- vroom(
@@ -59,9 +75,14 @@ ppsm <- vroom(
     Prixm2Moyen
   )
 ```
-We need to add the information for Paris by arrondissements that are missing in the dataset above. To do so, we will use the data available at https://paris.notaires.fr/fr/carte-des-prix?utm_source=chatgpt.com. 
 
-For simplicity, we only focus on the selling price of appartements in the city from 2016 to 2021 (trimester 4). The available file is a PDF that can be easily convert into a CSV file.
+We need to add the information for Paris by arrondissements that are
+missing in the dataset above. To do so, we will use the data available
+at https://paris.notaires.fr/fr/carte-des-prix?utm_source=chatgpt.com.
+
+For simplicity, we only focus on the selling price of appartements in
+the city from 2016 to 2021 (trimester 4). The available file is a PDF
+that can be easily convert into a CSV file.
 
 ```{r}
 ppsm_paris <- vroom(
@@ -89,18 +110,20 @@ ppsm_paris <- vroom(
 
 ```
 
-After that, we just need to merge the two datasets to obtain clean data about the real estate price in France.
+After that, we just need to merge the two datasets to obtain clean data
+about the real estate price in France.
+
 ```{r}
 ppsm <- bind_rows(ppsm, ppsm_paris) |>
   arrange(year, CODGEO)
 ```
 
-
 ## Poverty
 
 sources :
 
--   2016, 2017, 2018 : https://www.data.gouv.fr/datasets/revenus-et-pauvrete-des-menages-aux-niveaux-national-et-local-revenus-localises-sociaux-et-fiscaux/
+-   2016, 2017, 2018 :
+    https://www.data.gouv.fr/datasets/revenus-et-pauvrete-des-menages-aux-niveaux-national-et-local-revenus-localises-sociaux-et-fiscaux/
 
 -   2019 : https://www.insee.fr/fr/statistiques/6036902?sommaire=6036904
 
@@ -108,12 +131,21 @@ sources :
 
 -   2021 : https://www.insee.fr/fr/statistiques/7756729?sommaire=7756859
 
-These are collections of indicators of disposable income in France, at the city level, between 2016 and 2021. These are made by the Insee.
+These are collections of indicators of disposable income in France, at
+the city level, between 2016 and 2021. These are made by the Insee.
 
-We will only focus on the poverty rate, the median standard of living, the first and the ninth deciles.
+We will only focus on the poverty rate, the median standard of living,
+the first and the ninth deciles.
 
-Poverty data are provided as separate yearly files with heterogeneous structures. Variable names differ across years, and the 2018 data are reported at the IRIS level rather than the commune level. To handle this, we implement a loading strategy that reads each file separately while restricting imports to the variables of interest (years 2016:2021). Poverty indicators are harmonized across years. Non‑numeric values are explicitly converted to missing values during loading, but it won't affect our analysis because this only concerns small cities. The result is a consistent panel of indicators comparable across years.
-
+Poverty data are provided as separate yearly files with heterogeneous
+structures. Variable names differ across years, and the 2018 data are
+reported at the IRIS level rather than the commune level. To handle
+this, we implement a loading strategy that reads each file separately
+while restricting imports to the variables of interest (years
+2016:2021). Poverty indicators are harmonized across years. Non‑numeric
+values are explicitly converted to missing values during loading, but it
+won't affect our analysis because this only concerns small cities. The
+result is a consistent panel of indicators comparable across years.
 
 ```{r}
 poverty_files <- list.files(
@@ -186,8 +218,8 @@ poverty <- bind_rows(
 )
 ```
 
-
-Aggregating 2018 IRIS-level poverty data to the city level and combining weighted 2018 data with commune-level data for other years :
+Aggregating 2018 IRIS-level poverty data to the city level and combining
+weighted 2018 data with commune-level data for other years :
 
 ```{r}
 poverty_2018 <- poverty |>
@@ -204,6 +236,7 @@ poverty_2018 <- poverty |>
     .groups = "drop"
   )
 ```
+
 ```{r}
 codgeo_2018 <- poverty_2018 |>
   pull(CODGEO)
@@ -213,6 +246,7 @@ poverty <- bind_rows(
   poverty_2018
 )
 ```
+
 ```{r}
 poverty <- poverty |>
   filter(CODGEO %in% codgeo_2018)
@@ -220,15 +254,22 @@ poverty <- poverty |>
 
 ## Delinquency
 
-Source: https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales
+Source:
+https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales
 
-Here is the loading of the database for the delinquency. This is a database of all the crimes and offences (except traffic offences) at the city level in France, published by French Police Force, since 2016. 
+Here is the loading of the database for the delinquency. This is a
+database of all the crimes and offences (except traffic offences) at the
+city level in France, published by French Police Force, since 2016.
 
-The CSV format of the file creates problems of fromat that must be solved (types of column, delimiotation...).
+The CSV format of the file creates problems of fromat that must be
+solved (types of column, delimiotation...).
 
-The type of crimes must be reshape to long format (in rows) to wide format (in columns).
+The type of crimes must be reshape to long format (in rows) to wide
+format (in columns).
 
-The total number of crimes per year per city is computed by doing the sum of each type of crimes.
+The total number of crimes per year per city is computed by doing the
+sum of each type of crimes.
+
 ```{r}
 crime <- vroom(
   here("data_criminality.csv"),
@@ -265,11 +306,15 @@ crime <- vroom(
 
 ## Selecting cities present in the 2018 data
 
-The analysis will only focus on the cities where all the informations are available on 2018, because of the IRIS nomenclature.
+The analysis will only focus on the cities where all the informations
+are available on 2018, because of the IRIS nomenclature.
 
-The period that we will study is from 2016 to 2021. We are adding in the dataset the cities' name as well as removing the ones for which we don't have the information of the real estate price in at least one year.
+The period that we will study is from 2016 to 2021. We are adding in the
+dataset the cities' name as well as removing the ones for which we don't
+have the information of the real estate price in at least one year.
 
 We also compute the crime rate.
+
 ```{r}
 city_names <- vroom(
   here("data", "poverty", "pov2016.csv"),
@@ -292,13 +337,22 @@ data_final <- poverty |>
     crime_rate = (total_crimes/insee_pop)*100
   )
 ```
+
 We obtained a clean dataset for 897 cities between 2016 and 2021.
 
 # Cleaned data tables : summary and most important variables
 
-After loading the datasets, we needed to convert the IRIS code into the GEOCODE by weighting the poverty rate of each geocode by the population of the corresponding IRIS code. By doing that, we obtained clean data for 994 cities. We only focus on these cities in the analysis from 2016 to 2021. We also computed the poverty rate for each city.
+After loading the datasets, we needed to convert the IRIS code into the
+GEOCODE by weighting the poverty rate of each geocode by the population
+of the corresponding IRIS code. By doing that, we obtained clean data
+for 994 cities. We only focus on these cities in the analysis from 2016
+to 2021. We also computed the poverty rate for each city.
 
-We only kept the variables of interest by loading the datasets, that are the poverty rate, the first and last decile, the median income, the number of crimes per crime type and the real estate price (average price per square meter).Then we merged them into an only dataset that combines all the data per cities per years. 
+We only kept the variables of interest by loading the datasets, that are
+the poverty rate, the first and last decile, the median income, the
+number of crimes per crime type and the real estate price (average price
+per square meter).Then we merged them into an only dataset that combines
+all the data per cities per years.
 
 ```{r}
 descriptions <- c(
@@ -348,11 +402,20 @@ knitr::kable(dataset_info)
 
 # Research question :
 
-Does the acceleration of the gentrification process in certain French cities with more than 5000 inhabitants (2016-2021) correlate with a decrease in recorded crime in these same municipalities, and is there a displacement effect towards non-gentrified cities?
+Does the acceleration of the gentrification process in certain French
+cities with more than 5000 inhabitants (2016-2021) correlate with a
+decrease in recorded crime in these same municipalities, and is there a
+displacement effect towards non-gentrified cities?
 
-The first goal will be to make a gentrification index per city with a few variables: square meter price growth, median wage growth, poverty rate growth.
+The first goal will be to make a gentrification index per city with a
+few variables: square meter price growth, median wage growth, poverty
+rate growth.
 
-Then we will select the cities with the highest gentrification index (say top 20%) and compare it to the rest of the cities : do we observe a declination in terms of delinquency between the top 20% and the others? If yes, do we observe a spatial displacement of crime to non-gentrifying areas?
+Then we will select the cities with the highest gentrification index
+(say top 20%) and compare it to the rest of the cities : do we observe a
+declination in terms of delinquency between the top 20% and the others?
+If yes, do we observe a spatial displacement of crime to non-gentrifying
+areas?
 
 ## Real estate price
 
@@ -410,7 +473,9 @@ ggplot(ppsm_variation_map) +
 
 # Building a binary gentrification indicator
 
-In order to build our gentrification indicator, we'll have to compute the changes between 2016 and 2021 for the variables that we're interested in. 
+In order to build our gentrification indicator, we'll have to compute
+the changes between 2016 and 2021 for the variables that we're
+interested in.
 
 ```{r}
 # Keep only endpoints
@@ -438,12 +503,11 @@ gentrif_vars <- endpoints_wide |>
   )
 ```
 
-
-We're now able to compute our index. Our condition for a city to be considered gentrified are :
-- it shows higher price growth than the median of the cities 
-- AND it shows higher income growth than the median of the cities
-- AND it shows lower poverty growth than the median of the cities
-- AND it wasn't too rich to begin with 
+We're now able to compute our index. Our condition for a city to be
+considered gentrified are : - it shows higher price growth than the
+median of the cities - AND it shows higher income growth than the median
+of the cities - AND it shows lower poverty growth than the median of the
+cities - AND it wasn't too rich to begin with
 
 ```{r}
 gentrif_vars <- gentrif_vars |>
@@ -467,7 +531,7 @@ gentrif_vars <- gentrif_vars |>
 table(gentrif_vars$gentrifying)
 ```
 
-Computing crime rates change per capita : 
+Computing crime rates change per capita :
 
 ```{r}
 
@@ -488,9 +552,8 @@ crime_rate_change <- data_final |>
   left_join(gentrif_vars, by = "CODGEO")
 ```
 
-
-
-Comparing crime rate change by capita betweeen gentrified cities and non gentrified cities.
+Comparing crime rate change by capita betweeen gentrified cities and non
+gentrified cities.
 
 ```{r}
 crime_rate_change <- crime_rate_change |>
@@ -511,11 +574,8 @@ ggplot(crime_rate_change,
   theme_minimal()
 ```
 
-
-
-
-
-Now, let's compute the change in crime rate per type and compare between gentrified and non gentrified cities :
+Now, let's compute the change in crime rate per type and compare between
+gentrified and non gentrified cities :
 
 ```{r}
 
@@ -576,7 +636,8 @@ ggplot(crime_change_summary,
   ) +
   theme_minimal()
 ```
-Adjusting to population : 
+
+Adjusting to population :
 
 ```{r}
 crime_change_type_popadj <- data_final |>
@@ -679,7 +740,8 @@ ggplot(crime_change_popadj_cat_summary,
   ) +
   theme_minimal()
 ```
-Crime category differences : 
+
+Crime category differences :
 
 ```{r}
 crime_category_levels <- crime_change_type_popadj_cat |>
@@ -703,6 +765,7 @@ knitr::kable(
 )
 
 ```
+
 ```{r}
 crime_category_diff <- crime_change_type_popadj_cat |>
   filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
@@ -735,19 +798,28 @@ knitr::kable(
 )
 ```
 
-In non‑gentrified cities, violent crime increased substantially relative to population, while non‑violent crime slightly declined.
+In non‑gentrified cities, violent crime increased substantially relative
+to population, while non‑violent crime slightly declined.
 
-In gentrified cities, both violent and non‑violent crimes increased relative to population, but violent crime still grew much faster.
+In gentrified cities, both violent and non‑violent crimes increased
+relative to population, but violent crime still grew much faster.
 
-The gap between violent and non‑violent crime growth is smaller in gentrified cities : violent crime is still rising everywhere but relatively less so in gentrified cities compared to non-violent crimes.
+The gap between violent and non‑violent crime growth is smaller in
+gentrified cities : violent crime is still rising everywhere but
+relatively less so in gentrified cities compared to non-violent crimes.
 
--> Between 2016 and 2021, violent crimes increased faster than non‑violent crimes in both gentrified and non‑gentrified cities, net of population growth. However, the gap between violent and non‑violent crime growth is smaller in gentrified cities, suggesting a relative moderation of violent crime dynamics in these areas.”
+-\> Between 2016 and 2021, violent crimes increased faster than
+non‑violent crimes in both gentrified and non‑gentrified cities, net of
+population growth. However, the gap between violent and non‑violent
+crime growth is smaller in gentrified cities, suggesting a relative
+moderation of violent crime dynamics in these areas.”
 
 # Building a non binary gentrification index between first year and last year and checking for correlation with change in crime rate.
 
-## Building a non binary gentrification index  between first year and last year :
+## Building a non binary gentrification index between first year and last year :
 
 Identifying areas that could gentrify :
+
 ```{r}
 #Taking the earliest year of data for each demographic area (CODGEO)
 baseline <- data_final |>
@@ -762,6 +834,7 @@ percentile_cutoff <- quantile(baseline$baseline_med, 0.60, na.rm = TRUE)
 ```
 
 Calculating changes over time :
+
 ```{r}
 gentrifiable_areas <- baseline |>
   filter(baseline_med < percentile_cutoff) |>
@@ -790,6 +863,7 @@ evolution <- evolution |>
 ```
 
 Standardizing the variables :
+
 ```{r}
 # Converting all the variables to z-score so it makes the different metrics comparable despite different scales 
 evolution_std <- evolution |>
@@ -800,6 +874,7 @@ evolution_std <- evolution |>
 ```
 
 Creating a weighted gentrification index
+
 ```{r}
 evolution_std <- evolution_std |>
   mutate(
@@ -827,11 +902,14 @@ library(psych)
 psych::alpha(evolution_std |> select(price_var, med_inc_var, d9_var, d1_var, pov_var), check.keys = TRUE)
 
 ```
--> The Cronbach's alpha test tells us that the indicator we used is valid and reliable, and that all indicators contribute meaningfully 
+
+-\> The Cronbach's alpha test tells us that the indicator we used is
+valid and reliable, and that all indicators contribute meaningfully
 
 ## Checking for correlations with crime
 
-Creating gentrification categories : 
+Creating gentrification categories :
+
 ```{r}
 evolution_std_A_groups <- evolution_std_A |>
   mutate(
@@ -845,12 +923,12 @@ evolution_std_A_groups <- evolution_std_A |>
 
 table(evolution_std_A_groups$gent_category)
 ```
-Low = bottom 25% gentrified cities
-Medium = middle 50% gentrified cities
-high = top 25% gentrified cities
-(among the "gentrifiable" cities)
+
+Low = bottom 25% gentrified cities Medium = middle 50% gentrified cities
+high = top 25% gentrified cities (among the "gentrifiable" cities)
 
 Calculating crime rate changes
+
 ```{r}
 #Restructuring data to have 2016 and 2021 side by side for comparison
 crime_rate_change_continuous <- data_final |>
@@ -879,7 +957,9 @@ crime_rate_change_continuous <- data_final |>
 
 ```
 
-Scatter plot of the crime rate change compared to the gentrification index
+Scatter plot of the crime rate change compared to the gentrification
+index
+
 ```{r}
 library(viridis)
 
@@ -911,6 +991,7 @@ ggplot(crime_rate_change_continuous,
 ```
 
 Plotting the crime rate change among the three gentrification levels :
+
 ```{r}
 # Calculate confidence intervals
 ci_stats <- crime_rate_change_continuous |>
@@ -953,6 +1034,7 @@ ggplot(ci_stats |> filter(gent_category %in% c("Low", "High", "Medium")),
 ```
 
 Crime change by type and gentrification intensity
+
 ```{r}
 
 # Reshaping crime data per type
@@ -1011,7 +1093,9 @@ ggplot(crime_change_type_summary,
   ) +
   theme_minimal()
 ```
+
 Creating crime categories (excluding sexual violences) :
+
 ```{r}
 
 # Creating crime categories 
@@ -1042,6 +1126,7 @@ crime_change_type_cat <- crime_change_type_continuous |>
 ```
 
 Summarizing by category :
+
 ```{r}
 
 # Calculating the median population adjusted change for each combination of crime category and gentrification level
@@ -1055,7 +1140,8 @@ crime_cat_summary <- crime_change_type_cat |>
   )
 ```
 
-Violent vs non violent crime change by gentrification intensity : 
+Violent vs non violent crime change by gentrification intensity :
+
 ```{r}
 # Plot
 ggplot(crime_cat_summary,
@@ -1077,12 +1163,15 @@ knitr::kable(
   col.names = c("Crime Category", "Gentrification Level", "Mean Change", "N Observations")
 )
 ```
--> while non violent crimes rate decreases and violent crime rate increases for all groups, violent crimees increases less as gentrification intensifies
 
+-\> while non violent crimes rate decreases and violent crime rate
+increases for all groups, violent crimees increases less as
+gentrification intensifies
 
-Let's check if the changes are significant : 
+Let's check if the changes are significant :
 
 :
+
 ```{r}
 # Tests whether crime rate changes differ significantly across the three gentrification levels
 
@@ -1096,7 +1185,8 @@ cor.test(
   use = "complete.obs"
 )
 ```
--> nothing is significant
+
+-\> nothing is significant
 
 ```{r}
 # Checking only for violent crimes
@@ -1108,9 +1198,12 @@ violent_data <- crime_change_type_cat |>
 
 summary(aov(median_change ~ gent_category, data = violent_data))
 ```
--> not significant
 
-Plotting violent crime growth among gentrification intensities categories :
+-\> not significant
+
+Plotting violent crime growth among gentrification intensities
+categories :
+
 ```{r}
 # Get the medians for the plot
 violent_summary <- violent_data |>
@@ -1141,6 +1234,7 @@ ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_ca
 ```
 
 Overall test: Are there differences between groups?
+
 ```{r}
 library(ggsignif)
 
@@ -1200,9 +1294,11 @@ ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_ca
   theme(legend.position = "none")
 
 ```
--> There is a significant difference between high group and low group
 
-Pairwise wilcox test : 
+-\> There is a significant difference between high group and low group
+
+Pairwise wilcox test :
+
 ```{r}
 pairwise.wilcox.test(violent_data$median_change,
                     violent_data$gent_category,
@@ -1213,43 +1309,561 @@ y_max <- max(violent_summary$median_change + violent_summary$q75, na.rm = TRUE)
 
   
 ```
--> significant for High-Low
 
-
-
-
+-\> significant for High-Low
 
 # Building a non binary gentrification index (year to year)
+
+Calculating year over year growth rates for gentrifiable areas :
+
 ```{r}
 gent_yearly <- data_final |>
+# Calculating year over year growth rate
+ filter(CODGEO %in% gentrifiable_areas) |>
+ arrange(CODGEO, year) |>
+ group_by(CODGEO) |>
+ mutate(
+   price_g = log(Prixm2Moyen) - log(dplyr::lag(Prixm2Moyen)),
+   med_g   = log(MED) - log(dplyr::lag(MED)),
+   d9_g    = log(D9) - log(dplyr::lag(D9)),
+   d1_g    = -(log(D1) - log(dplyr::lag(D1))),
+   pov_g   = -(TP60 - dplyr::lag(TP60))
+ ) |>
+ ungroup() |>
+ filter(!is.na(price_g)) |>
+  # Standardizing within each year
+ mutate(
+   price_g_s = as.numeric(scale(price_g)),
+   med_g_s = as.numeric(scale(med_g)),
+   d9_g_s = as.numeric(scale(d9_g)),
+   d1_g_s = as.numeric(scale(d1_g)),
+   pov_g_s = as.numeric(scale(pov_g)),
+   # Creation of the index
+   gent_index = (price_g_s + med_g_s + d9_g_s + d1_g_s + pov_g_s) / 5
+ )
+
+# Calculate year-over-year crime rate change
+crime_yearly <- data_final |>
   filter(CODGEO %in% gentrifiable_areas) |>
+  arrange(CODGEO, year) |>
   group_by(CODGEO) |>
   mutate(
-    price_g = log(Prixm2Moyen) - log(lag(Prixm2Moyen)),
-    med_g   = log(MED) - log(lag(MED)),
-    d9_g    = log(D9) - log(lag(D9)),
-    d1_g    = -(log(D1) - log(lag(D1))),
-    pov_g   = -(TP60 - lag(TP60))
+    crime_rate = total_crimes / insee_pop,
+    crime_change = log(crime_rate) - log(dplyr::lag(crime_rate))
   ) |>
   ungroup() |>
-  group_by(year) |>
-  mutate(across(
-    c(price_g, med_g, d9_g, d1_g, pov_g),
-    scale
-  )) |>
-  rowwise() |>
+  select(CODGEO, year, crime_rate, crime_change, total_crimes, insee_pop)
+
+# Create the panel by joining gentrification index with crime data
+crime_panel <- gent_yearly |>
+  select(CODGEO, year, gent_index) |>
+  left_join(crime_yearly, by = c("CODGEO", "year")) |>
+  filter(!is.na(crime_change), !is.na(gent_index))
+
+```
+
+Testing wether last year's gentrification predicts this year's crime change
+```{r}
+library(plm)
+panel_data <- pdata.frame(crime_panel, index = c("CODGEO", "year"))
+model <- plm(crime_change ~ lag(gent_index), 
+             data = panel_data, 
+             model = "within",  # Fixed effects
+             effect = "twoways") # Both area and year FE
+summary(model)
+```
+-> not significant at all
+
+Testing wether last year's gentrification predicts this year's violent crime change
+```{r}
+# Creating violent crimes panel
+violent_crimes_panel <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>
+  arrange(CODGEO, year) |>
   mutate(
-    gent_index = mean(
-      c(price_g, med_g, d9_g, d1_g, pov_g),
+    violent_total = rowSums(
+      across(c(`Violences physiques intrafamiliales`,
+               `Violences physiques hors cadre familial`,
+               `Vols avec armes`,
+               `Vols violents sans arme`)),
       na.rm = TRUE
-    )
+    ),
+    violent_rate = violent_total / insee_pop
+  ) |>
+  # Joining with gent_yearly
+  left_join(
+    gent_yearly |> select(CODGEO, year, gent_index),
+    by = c("CODGEO", "year")
+  ) |>
+  
+  # Calculating changes and lagged gentrification
+  group_by(CODGEO) |>
+  mutate(
+    violent_change = log(violent_rate + 0.001) - log(dplyr::lag(violent_rate) + 0.001),
+    gent_index_lag1 = dplyr::lag(gent_index, 1)
   ) |>
   ungroup()
+
+# Step 2: Check we have data
+violent_crimes_panel |>
+  summarise(
+    total_rows = n(),
+    violent_change_valid = sum(!is.na(violent_change)),
+    gent_index_valid = sum(!is.na(gent_index)),
+    gent_lag1_valid = sum(!is.na(gent_index_lag1)),
+    both_valid = sum(!is.na(violent_change) & !is.na(gent_index_lag1))
+  )
+
+# Filtering for analysis
+violent_for_analysis <- violent_crimes_panel |>
+  filter(!is.na(violent_change) & !is.na(gent_index_lag1))
+
+print(paste("Rows for analysis:", nrow(violent_for_analysis)))
+
+# Basic analysis
+cor_result <- cor.test(
+  violent_for_analysis$gent_index_lag1,
+  violent_for_analysis$violent_change,
+  use = "complete.obs"
+)
+print(cor_result)
+
+model <- lm(violent_change ~ gent_index_lag1, data = violent_for_analysis)
+summary(model)
+
 ```
+-> not significant
+
+Testing multiplte lags :
 ```{r}
-summary(gent_yearly$gent_index)
-hist(gent_yearly$gent_index, breaks = 50)
+# Creating multiple lags
+violent_with_lags <- violent_crimes_panel |>
+  arrange(CODGEO, year) |>
+  group_by(CODGEO) |>
+  mutate(
+    gent_index_lag1 = dplyr::lag(gent_index, 1),
+    gent_index_lag2 = dplyr::lag(gent_index, 2),
+    gent_index_lag3 = dplyr::lag(gent_index, 3)
+  ) |>
+  ungroup()
+
+# Testing each lag separately
+# Lag 1
+lag1_data <- violent_with_lags |> filter(!is.na(violent_change) & !is.na(gent_index_lag1))
+cor_lag1 <- cor.test(lag1_data$gent_index_lag1, lag1_data$violent_change)
+print("=== LAG 1 (1 year delay) ===")
+print(paste("Correlation:", round(cor_lag1$estimate, 4)))
+print(paste("P-value:", round(cor_lag1$p.value, 4)))
+print(paste("N:", nrow(lag1_data)))
+
+# Lag 2
+lag2_data <- violent_with_lags |> filter(!is.na(violent_change) & !is.na(gent_index_lag2))
+cor_lag2 <- cor.test(lag2_data$gent_index_lag2, lag2_data$violent_change)
+print("=== LAG 2 (2 year delay) ===")
+print(paste("Correlation:", round(cor_lag2$estimate, 4)))
+print(paste("P-value:", round(cor_lag2$p.value, 4)))
+print(paste("N:", nrow(lag2_data)))
+
+# Lag 3
+lag3_data <- violent_with_lags |> filter(!is.na(violent_change) & !is.na(gent_index_lag3))
+cor_lag3 <- cor.test(lag3_data$gent_index_lag3, lag3_data$violent_change)
+print("=== LAG 3 (3 year delay) ===")
+print(paste("Correlation:", round(cor_lag3$estimate, 4)))
+print(paste("P-value:", round(cor_lag3$p.value, 4)))
+print(paste("N:", nrow(lag3_data)))
+```
+-> Lag 2 is significant, not the others
+
+Comparing wether gentrification affects violent vs non violent crime differently :
+```{r}
+# Create non-violent crimes panel
+nonviolent_panel <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>
+  arrange(CODGEO, year) |>
+  mutate(
+    nonviolent_total = rowSums(
+      across(c(`Vols sans violence contre des personnes`,
+               `Vols de véhicule`,
+               `Vols dans les véhicules`,
+               `Vols d'accessoires sur véhicules`,
+               `Cambriolages de logement`,
+               `Destructions et dégradations volontaires`,
+               `Escroqueries et fraudes aux moyens de paiement`,
+               `Usage de stupéfiants`,
+               `Trafic de stupéfiants`)),
+      na.rm = TRUE
+    ),
+    nonviolent_rate = nonviolent_total / insee_pop
+  ) |>
+  left_join(
+    gent_yearly |> select(CODGEO, year, gent_index),
+    by = c("CODGEO", "year")
+  ) |>
+  group_by(CODGEO) |>
+  mutate(
+    nonviolent_change = log(nonviolent_rate + 0.001) - log(dplyr::lag(nonviolent_rate) + 0.001),
+    gent_index_lag1 = dplyr::lag(gent_index, 1),
+    gent_index_lag2 = dplyr::lag(gent_index, 2)
+  ) |>
+  ungroup()
+
+# Test
+nv_lag1 <- nonviolent_panel |> filter(!is.na(nonviolent_change) & !is.na(gent_index_lag1))
+cor_nv1 <- cor.test(nv_lag1$gent_index_lag1, nv_lag1$nonviolent_change)
+print("=== NON-VIOLENT CRIMES - LAG 1 ===")
+print(paste("Correlation:", round(cor_nv1$estimate, 4)))
+print(paste("P-value:", round(cor_nv1$p.value, 4)))
+
+nv_lag2 <- nonviolent_panel |> filter(!is.na(nonviolent_change) & !is.na(gent_index_lag2))
+cor_nv2 <- cor.test(nv_lag2$gent_index_lag2, nv_lag2$nonviolent_change)
+print("=== NON-VIOLENT CRIMES - LAG 2 ===")
+print(paste("Correlation:", round(cor_nv2$estimate, 4)))
+print(paste("P-value:", round(cor_nv2$p.value, 4)))
 ```
 
+Visualizing all the lag effects of gentrification on violent crime :
+```{r}
+lag_summary <- data.frame(
+  lag = c(1, 2, 3),
+  correlation = c(cor_lag1$estimate, cor_lag2$estimate, cor_lag3$estimate),
+  p_value = c(cor_lag1$p.value, cor_lag2$p.value, cor_lag3$p.value),
+  n = c(nrow(lag1_data), nrow(lag2_data), nrow(lag3_data))
+) |>
+  mutate(significant = ifelse(p_value < 0.05, "Yes", "No"))
+
+# Plot
+ggplot(lag_summary, aes(x = factor(lag), y = correlation, fill = significant)) +
+  geom_col() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_fill_manual(values = c("No" = "gray", "Yes" = "red")) +
+  labs(
+    x = "Lag (Years)",
+    y = "Correlation with Violent Crime Change",
+    title = "Effect of Gentrification on Violent Crime at Different Lags",
+    subtitle = "Testing if gentrification effects take time to materialize"
+  ) +
+  theme_minimal()
+```
+
+Including multiple lags in one model (for violent crimes)
+```{r}
+library(plm)
+
+panel_multi_lag <- violent_with_lags |>
+  filter(!is.na(violent_change) & !is.na(gent_index_lag1) & !is.na(gent_index_lag2))
+
+if(nrow(panel_multi_lag) > 100) {
+  panel_data <- pdata.frame(panel_multi_lag, index = c("CODGEO", "year"))
+  
+  model_lags <- plm(
+    violent_change ~ gent_index_lag1 + gent_index_lag2 + gent_index_lag3,
+    data = panel_data,
+    model = "within",
+    effect = "individual"
+  )
+  
+  print(summary(model_lags))
+}
+```
+
+Visualizing the effects of lag 1 and 2 gentrification on non violent crime over time :
+```{r}
+# Create summary data
+lag_effects_nv <- data.frame(
+  Lag = c("Lag 1\n(1 year)", "Lag 2\n(2 years)"),
+  Correlation = c(0.1411, -0.09),
+  P_value = c(0, 0.0003),
+  Effect = c("Increase", "Decrease")
+)
+
+ggplot(lag_effects_nv, aes(x = Lag, y = Correlation, fill = Effect)) +
+  geom_col(width = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_text(aes(label = paste0("r = ", Correlation, "\np < 0.001")), 
+            vjust = ifelse(lag_effects_nv$Correlation > 0, -0.5, 1.5),
+            size = 4) +
+  scale_fill_manual(values = c("Increase" = "#e74c3c", "Decrease" = "#27ae60")) +
+  labs(
+    x = "Time After Gentrification",
+    y = "Correlation with Non-Violent Crime Change",
+    title = "Gentrification Effects on Non-Violent Crime Over Time",
+    subtitle = "Short-term increase followed by longer-term decrease"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+Comparison table of the effects of gentrification at lag 1 and 2 on violent and non violent crime
+```{r}
+# Summary comparison table
+comparison <- data.frame(
+  Crime_Type = c("Violent", "Violent", "Non-Violent", "Non-Violent"),
+  Lag = c("1 year", "2 years", "1 year", "2 years"),
+  Correlation = c(cor_lag1$estimate, cor_lag2$estimate, 0.1411, -0.09),
+  Significant = c(
+    ifelse(cor_lag1$p.value < 0.05, "Yes", "No"),
+    ifelse(cor_lag2$p.value < 0.05, "Yes", "No"),
+    "Yes", "Yes"
+  )
+)
+
+knitr::kable(comparison, digits = 3, 
+             col.names = c("Crime Type", "Lag", "Correlation", "Significant (p<0.05)"))
+```
+
+Testing the effects of lag gentrification by crime type (non violents)
+```{r}
+# List of crime types to test
+crime_types <- names(data_final)[8:22]
+crime_types <- crime_types[crime_types != "Violences sexuelles"]
 
 
+# Function to test each crime type
+test_crime_type <- function(crime_col) {
+  crime_panel <- data_final |>
+    filter(CODGEO %in% gentrifiable_areas) |>
+    arrange(CODGEO, year) |>
+    mutate(
+      crime_rate = .data[[crime_col]] / insee_pop
+    ) |>
+    left_join(
+      gent_yearly |> select(CODGEO, year, gent_index),
+      by = c("CODGEO", "year")
+    ) |>
+    group_by(CODGEO) |>
+    mutate(
+      crime_change = log(crime_rate + 0.0001) - log(dplyr::lag(crime_rate) + 0.0001),
+      gent_index_lag1 = dplyr::lag(gent_index, 1)
+    ) |>
+    ungroup() |>
+    filter(!is.na(crime_change) & !is.na(gent_index_lag1) & is.finite(crime_change))
+  
+  if(nrow(crime_panel) > 30) {
+    cor_result <- cor.test(crime_panel$gent_index_lag1, crime_panel$crime_change)
+    return(data.frame(
+      crime_type = crime_col,
+      correlation = cor_result$estimate,
+      p_value = cor_result$p.value,
+      n = nrow(crime_panel),
+      significant = ifelse(cor_result$p.value < 0.05, "Yes", "No")
+    ))
+  }
+}
+
+# Run for all crime types
+crime_results <- bind_rows(lapply(crime_types, test_crime_type))
+
+# Display results
+crime_results |>
+  arrange(p_value) |>
+  knitr::kable(digits = 4, col.names = c("Crime Type", "Correlation", "P-value", "N", "Significant"))
+
+# Visualize
+ggplot(crime_results, aes(x = reorder(crime_type, correlation), y = correlation, fill = significant)) +
+  geom_col() +
+  coord_flip() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_fill_manual(values = c("No" = "gray70", "Yes" = "#e74c3c")) +
+  labs(
+    x = NULL,
+    y = "Correlation with Crime Change (Lag 1)",
+    title = "Gentrification Effects by Crime Type",
+    subtitle = "Which crimes respond most to gentrification?"
+  ) +
+  theme_minimal()
+```
+-> Gentrification has a significant positive effect on vols sans violence contre des personnes, destructions et dégradations volontaires, vols de véhicule, violences physique hors cadre familial and a significant negative effect on usage de stupéfiants (AFD).
+
+
+
+Comparing the effects of gentrification on  richer vs poorer areas :
+```{r}
+# Separating areas by income
+interaction_data <- violent_crimes_panel |>
+  left_join(baseline |> select(CODGEO, baseline_med), by = "CODGEO") |>
+  mutate(
+    income_tercile = ntile(baseline_med, 3),
+    income_group = case_when(
+      income_tercile == 1 ~ "Low Income",
+      income_tercile == 2 ~ "Medium Income",
+      income_tercile == 3 ~ "High Income"
+    )
+  ) |>
+  filter(!is.na(violent_change) & !is.na(gent_index_lag1))
+
+# Test by income group
+interaction_results <- interaction_data |>
+  group_by(income_group) |>
+  summarise(
+    correlation = cor(gent_index_lag1, violent_change, use = "complete.obs"),
+    p_value = cor.test(gent_index_lag1, violent_change)$p.value,
+    n = n()
+  )
+
+print(interaction_results)
+
+# Regression with interaction
+interaction_model <- lm(violent_change ~ gent_index_lag1 * income_group, 
+                        data = interaction_data)
+summary(interaction_model)
+```
+-> Gentrification reduces violent crime in initially low-income areas, but slightly increases it in higher-income areas. The effect of gentrification on crime depends on the neighborhood's initial economic status
+
+
+But maybe the causality is in the other direction ? does gentrification cause violent crime change or does violent crime causes gentrification ? Let's use Granger Causality
+```{r}
+library(plm)
+
+# Preparing balanced panel
+granger_data <- violent_crimes_panel |>
+  filter(!is.na(violent_change) & !is.na(gent_index) & !is.na(gent_index_lag1)) |>
+  group_by(CODGEO) |>
+  filter(n() >= 3) |>  # Need at least 3 observations per area
+  ungroup()
+
+granger_panel <- pdata.frame(granger_data, index = c("CODGEO", "year"))
+
+# Model 1: Crime change predicted by lagged gentrification
+model_gent_causes_crime <- plm(
+  violent_change ~ gent_index_lag1,
+  data = granger_panel,
+  model = "within",
+  effect = "individual"
+)
+
+# Model 2: Reverse - does crime cause gentrification?
+granger_data2 <- granger_data |>
+  group_by(CODGEO) |>
+  mutate(violent_change_lag1 = dplyr::lag(violent_change, 1)) |>
+  ungroup() |>
+  filter(!is.na(violent_change_lag1))
+
+granger_panel2 <- pdata.frame(granger_data2, index = c("CODGEO", "year"))
+
+model_crime_causes_gent <- plm(
+  gent_index ~ violent_change_lag1,
+  data = granger_panel2,
+  model = "within",
+  effect = "individual"
+)
+
+print("=== Does Gentrification Cause Crime? ===")
+summary(model_gent_causes_crime)
+
+print("=== Does Crime Cause Gentrification? ===")
+summary(model_crime_causes_gent)
+```
+-> Crime changes predict gentrification! Areas that become safer attract more gentrification the following year. This suggests a reverse causality or feedback loop - it's not just that gentrification affects crime, but crime levels also influence where gentrification occurs.
+
+Visualization 1: Interaction effect
+```{r}
+ggplot(interaction_data |> filter(!is.na(income_group)), 
+       aes(x = gent_index_lag1, y = violent_change, color = income_group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = c("Low Income" = "#e74c3c", 
+                                 "Medium Income" = "#f39c12", 
+                                 "High Income" = "#27ae60")) +
+  labs(
+    x = "Previous Year's Gentrification Index",
+    y = "Violent Crime Change",
+    color = "Initial Income Level",
+    title = "Gentrification's Effect on Crime Varies by Initial Income",
+    subtitle = "Gentrification REDUCES crime in low-income areas, but INCREASES it in high-income areas"
+  ) +
+  theme_minimal()
+```
+
+Visualization 2: Reverse causality
+```{r}
+ggplot(granger_data2 |> filter(!is.na(violent_change_lag1) & !is.na(gent_index)), 
+       aes(x = violent_change_lag1, y = gent_index)) +
+  geom_point(alpha = 0.3, color = "steelblue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(
+    x = "Previous Year's Violent Crime Change",
+    y = "This Year's Gentrification Index",
+    title = "Crime Drives Gentrification Patterns",
+    subtitle = "Areas with declining crime attract more gentrification (r = -0.19, p < 0.001)"
+  ) +
+  theme_minimal()
+```
+Do neighboring areas' gentrification affect local crime?
+```{r}
+#Identifying department from CODGEO
+spatial_data <- violent_crimes_panel |>
+  mutate(department = substr(CODGEO, 1, 2)) |>
+  group_by(department, year) |>
+  mutate(
+    # Average gentrification in the same department (excluding self)
+    n_in_dept = n(),
+    sum_gent_dept = sum(gent_index, na.rm = TRUE),
+    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1)
+  ) |>
+  ungroup() |>
+  group_by(CODGEO) |>
+  mutate(
+    neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1)
+  ) |>
+  ungroup() |>
+  filter(!is.na(violent_change) & !is.na(neighbor_gent_lag1))
+
+# Does neighboring gentrification affect local crime?
+cor_neighbor <- cor.test(spatial_data$neighbor_gent_lag1, spatial_data$violent_change)
+print("=== Neighboring Gentrification Effect ===")
+print(paste("Correlation:", round(cor_neighbor$estimate, 4)))
+print(paste("P-value:", round(cor_neighbor$p.value, 4)))
+
+# Combined model
+spatial_model <- lm(violent_change ~ gent_index_lag1 + neighbor_gent_lag1, 
+                    data = spatial_data)
+summary(spatial_model)
+```
+-> When surrounding cities gentrify (in this example, cities of the same département), local violent crime increases locally 
+
+Do we observe different effects depending on the size of the city ? (urban/rural comparison based on population)
+```{r}
+# Creating urban/rural indicator based on population
+pop_data <- data_final |>
+  group_by(CODGEO) |>
+  summarise(mean_pop = mean(insee_pop, na.rm = TRUE))
+
+urban_rural_data <- violent_crimes_panel |>
+  left_join(pop_data, by = "CODGEO") |>
+  mutate(
+    area_type = case_when(
+      mean_pop > 50000 ~ "Large City",
+      mean_pop > 10000 ~ "Medium City",
+      TRUE ~ "Small City"
+    )
+  ) |>
+  filter(!is.na(violent_change) & !is.na(gent_index_lag1))
+
+# Testing by area type
+urban_rural_results <- urban_rural_data |>
+  group_by(area_type) |>
+  summarise(
+    correlation = cor(gent_index_lag1, violent_change, use = "complete.obs"),
+    p_value = cor.test(gent_index_lag1, violent_change)$p.value,
+    n = n()
+  )
+
+print(urban_rural_results)
+
+# Visualization
+ggplot(urban_rural_data, aes(x = gent_index_lag1, y = violent_change, color = area_type)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~area_type) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    x = "Previous Year's Gentrification Index",
+    y = "Violent Crime Change",
+    title = "Gentrification-Crime Relationship by City Size"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+In larger cities there is a significantly positive correlation between the lagged gentrification and violent crime change rate
