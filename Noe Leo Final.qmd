@@ -188,18 +188,18 @@ load_poverty <- function(file) {
       delim = ";",
       col_select = any_of(c(
         "IRIS",
-        "DEC_MED18",
-        "DEC_TP6018",
-        "DEC_D118",
-        "DEC_D918"
+        "DISP_MED18",
+        "DISP_TP6018",
+        "DISP_D118",
+        "DISP_D918"
       ))
     ) |>
       transmute(
         IRIS,
-        MED  = DEC_MED18,
-        TP60 = DEC_TP6018,
-        D1   = DEC_D118,
-        D9   = DEC_D918,
+        MED  = DISP_MED18,
+        TP60 = DISP_TP6018,
+        D1   = DISP_D118,
+        D9   = DISP_D918,
         year
       )
 
@@ -213,15 +213,13 @@ load_poverty <- function(file) {
   ~ suppressWarnings(as.numeric(gsub(",", ".", .x)))
 ))
 }
+
 poverty <- bind_rows(
   lapply(poverty_files, load_poverty)
 )
-```
 
-Aggregating 2018 IRIS-level poverty data to the city level and combining
-weighted 2018 data with commune-level data for other years :
+## Aggregate 2018 IRIS Data to City Level
 
-```{r}
 poverty_2018 <- poverty |>
   filter(year == 2018) |>
   left_join(pop2018_IRIS, by = "IRIS") |>
@@ -235,22 +233,112 @@ poverty_2018 <- poverty |>
     year = 2018,
     .groups = "drop"
   )
-```
 
-```{r}
-codgeo_2018 <- poverty_2018 |>
-  pull(CODGEO)
+codgeo_2018 <- poverty_2018 |> pull(CODGEO)
 
 poverty <- bind_rows(
   poverty |> filter(year != 2018),
   poverty_2018
-)
+) |>
+  filter(CODGEO %in% codgeo_2018)
+
+## Crime Data
+
+crime <- vroom(
+  here("data_criminality.csv"),
+  delim = ";",
+  locale = locale(decimal_mark = ","),
+  col_select = c(
+    annee,
+    CODGEO_2025,
+    indicateur,
+    nombre,
+    insee_pop
+  ),
+  col_types = cols(
+    annee = col_integer(),
+    nombre = col_integer(),
+    insee_pop = col_integer()
+  )
+) |>
+  pivot_wider(
+    names_from = indicateur,
+    values_from = nombre,
+    values_fill = 0
+  ) |>
+  rename(CODGEO = CODGEO_2025) |>
+  mutate(
+    total_crimes = rowSums(
+      across(-c(CODGEO, annee, insee_pop)),
+      na.rm = TRUE
+    ),
+    year = annee
+  ) |>
+  select(-annee)
+
+## City Names
+
+city_names <- vroom(
+  here("data", "poverty", "pov2016.csv"),
+  delim = ";",
+  col_select = c(CODGEO, LIBGEO)
+) |>
+  distinct()
+
+## Create Final Dataset
+
+data_final <- poverty |>
+  left_join(crime, by = c("CODGEO", "year")) |>
+  left_join(ppsm, by = c("CODGEO", "year")) |>
+  select(-IRIS) |>
+  left_join(city_names, by = "CODGEO") |>
+  distinct(CODGEO, year, .keep_all = TRUE) |>
+  group_by(CODGEO) |>
+  filter(!is.na(Prixm2Moyen)) |>
+  filter(n_distinct(year) == 6) |>
+  ungroup() |>
+  filter(insee_pop >= MIN_POPULATION) |>
+  mutate(
+    crime_rate = (total_crimes / insee_pop) * 100,
+    covid_period = year >= 2020,
+    department = substr(CODGEO, 1, 2)
+  )
+
+# Create violent and non-violent crime categories
+data_final <- data_final |>
+  mutate(
+    violent_crimes = rowSums(
+      across(c(
+        `Violences physiques intrafamiliales`,
+        `Violences physiques hors cadre familial`,
+        `Vols avec armes`,
+        `Vols violents sans arme`
+      )),
+      na.rm = TRUE
+    ),
+    nonviolent_crimes = rowSums(
+      across(c(
+        `Vols sans violence contre des personnes`,
+        `Vols de véhicule`,
+        `Vols dans les véhicules`,
+        `Vols d'accessoires sur véhicules`,
+        `Cambriolages de logement`,
+        `Destructions et dégradations volontaires`,
+        `Escroqueries et fraudes aux moyens de paiement`,
+        `Usage de stupéfiants`,
+        `Trafic de stupéfiants`
+      )),
+      na.rm = TRUE
+    ),
+    violent_rate = (violent_crimes / insee_pop) * 100,
+    nonviolent_rate = (nonviolent_crimes / insee_pop) * 100
+  )
+
+cat("Final dataset:", n_distinct(data_final$CODGEO), "cities over", 
+    n_distinct(data_final$year), "years\n")
 ```
 
-```{r}
-poverty <- poverty |>
-  filter(CODGEO %in% codgeo_2018)
-```
+
 
 ## Delinquency
 
@@ -1582,3 +1670,6 @@ ggplot(urban_rural_data, aes(x = gent_index_lag1, y = violent_change, color = ar
   theme(legend.position = "none")
 ```
 In larger cities there is a significantly positive correlation between the lagged gentrification and violent crime change rate
+
+
+
