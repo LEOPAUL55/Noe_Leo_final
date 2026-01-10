@@ -454,365 +454,76 @@ ppsm_variation_map <- city |>
   left_join(ppsm_variation, by = "CODGEO")
 ```
 
+# Analysis of the crime rate evolution from 2016 to 2021 - comparison between violent and non violent crimes
+
 ```{r}
+crime_wide <- data_final |>
+  mutate(
+    violent_total = rowSums(
+      across(c(`Violences physiques intrafamiliales`,
+               `Violences physiques hors cadre familial`,
+               `Vols avec armes`,
+               `Vols violents sans arme`)),
+      na.rm = TRUE
+    ),
+    nonviolent_total = rowSums(
+      across(c(`Vols sans violence contre des personnes`,
+               `Vols de véhicule`,
+               `Vols dans les véhicules`,
+               `Vols d'accessoires sur véhicules`,
+               `Cambriolages de logement`,
+               `Destructions et dégradations volontaires`,
+               `Escroqueries et fraudes aux moyens de paiement`,
+               `Usage de stupéfiants`,
+               `Trafic de stupéfiants`)),
+      na.rm = TRUE
+    ),
+    total_excl_sexual = total_crimes - `Violences sexuelles`,
+    violent_rate = (violent_total / insee_pop) * 100,
+    nonviolent_rate = (nonviolent_total / insee_pop) * 100,
+    total_rate_excl = (total_excl_sexual / insee_pop) * 100
+  ) |>
+  group_by(year) |>
+  summarise(
+    total = median(total_rate_excl, na.rm = TRUE),
+    violent = median(violent_rate, na.rm = TRUE),
+    nonviolent = median(nonviolent_rate, na.rm = TRUE),
+    .groups = "drop"
+  )
 
-# NO OBLIGATION TO RUN THAT (TAKE AGES)
+# Scale factor for secondary axis
+scale_factor <- max(crime_wide$nonviolent) / max(crime_wide$violent)
 
-library(viridis)
-ggplot(ppsm_variation_map) +
-  geom_sf(aes(fill = Prixm2_pct), color = NA) +
-  scale_fill_viridis_c(
-    option = "magma",      
-    direction = -1,        
-    na.value = "grey90",
-    name = "% change"
+ggplot(crime_wide, aes(x = year)) +
+  geom_line(aes(y = nonviolent, color = "Non-Violent"), size = 1.5) +
+  geom_point(aes(y = nonviolent, color = "Non-Violent"), size = 4) +
+  geom_line(aes(y = total, color = "Total"), size = 1.5) +
+  geom_point(aes(y = total, color = "Total"), size = 4) +
+  geom_line(aes(y = violent * scale_factor, color = "Violent"), size = 1.5) +
+  geom_point(aes(y = violent * scale_factor, color = "Violent"), size = 4) +
+  scale_y_continuous(
+    name = "Non-Violent & Total (per 100 inh.)",
+    sec.axis = sec_axis(~./scale_factor, name = "Violent Crime (per 100 inh.)")
   ) +
-  labs(title = "Evolution of the average price per m² – France (2016-2021)") +
-  theme_minimal()
-```
-
-# Building a binary gentrification indicator
-
-In order to build our gentrification indicator, we'll have to compute
-the changes between 2016 and 2021 for the variables that we're
-interested in.
-
-```{r}
-# Keep only endpoints
-endpoints <- data_final |>
-  filter(year %in% c(2016, 2021)) |>
-  select(
-    CODGEO, LIBGEO, year,
-    Prixm2Moyen, MED, TP60
-  )
-
-# Pivot to wide
-endpoints_wide <- endpoints |>
-  pivot_wider(
-    names_from = year,
-    values_from = c(Prixm2Moyen, MED, TP60),
-    names_sep = "_"
-  )
-
-# Compute changes
-gentrif_vars <- endpoints_wide |>
-  mutate(
-    price_growth  = (Prixm2Moyen_2021 - Prixm2Moyen_2016) / Prixm2Moyen_2016,
-    income_growth = (MED_2021 - MED_2016) / MED_2016,
-    poverty_change = TP60_2016 - TP60_2021
-  )
-```
-
-We're now able to compute our index. Our condition for a city to be
-considered gentrified are : - it shows higher price growth than the
-median of the cities - AND it shows higher income growth than the median
-of the cities - AND it shows lower poverty growth than the median of the
-cities - AND it wasn't too rich to begin with
-
-```{r}
-gentrif_vars <- gentrif_vars |>
-  mutate(
-    price_z   = as.numeric(scale(price_growth)),
-    income_z  = as.numeric(scale(income_growth)),
-    poverty_z = as.numeric(scale(poverty_change))
-  )
-
-income_2016_med <- median(gentrif_vars$MED_2016, na.rm = TRUE)
-
-gentrif_vars <- gentrif_vars |>
-  mutate(
-    gentrifying =
-      price_z   > 0 &
-      income_z  > 0 &
-      poverty_z > 0 &
-      MED_2016  < income_2016_med
-  )
-
-table(gentrif_vars$gentrifying)
-```
-
-Computing crime rates change per capita :
-
-```{r}
-
-crime_rate_change <- data_final |>
-  filter(year %in% c(2016, 2021)) |>
-  select(CODGEO, year, total_crimes, insee_pop) |>
-  pivot_wider(
-    names_from = year,
-    values_from = c(total_crimes, insee_pop),
-    names_sep = "_"
-  ) |>
-  mutate(
-    crime_rate_2016 = total_crimes_2016 / insee_pop_2016,
-    crime_rate_2021 = total_crimes_2021 / insee_pop_2021,
-    crime_rate_change =
-      (crime_rate_2021 - crime_rate_2016) / crime_rate_2016
-  ) |>
-  left_join(gentrif_vars, by = "CODGEO")
-```
-
-Comparing crime rate change by capita betweeen gentrified cities and non
-gentrified cities.
-
-```{r}
-crime_rate_change <- crime_rate_change |>
-  select(-gentrifying) |>
-  left_join(
-    gentrif_vars |> select(CODGEO, gentrifying),
-    by = "CODGEO"
-  )
-
-ggplot(crime_rate_change,
-       aes(x = gentrifying, y = crime_rate_change)) +
-  geom_boxplot(fill = 'red', alpha = 0.7) +
+  scale_x_continuous(breaks = 2016:2021) +
+  scale_color_manual(values = c("Total" = "#2c3e50", 
+                                "Violent" = "#e74c3c", 
+                                "Non-Violent" = "#3498db")) +
   labs(
-    x = "Gentrifying cities",
-    y = "Crime rate change (2016–2021)",
-    title = "Crime rate evolution in gentrifying vs non-gentrifying cities"
+    x = "Year",
+    color = NULL,
+    title = "Crime Rate Evolution in French Cities (2016-2021)",
+    subtitle = "Note: Violent crime uses secondary axis (right) | Excluding sexual violence"
   ) +
-  theme_minimal()
-```
-
-Now, let's compute the change in crime rate per type and compare between
-gentrified and non gentrified cities :
-
-```{r}
-
-crime_long <- data_final |>
-  pivot_longer(
-    cols = 8:22,
-    names_to = "crime_type",
-    values_to = "crime_count"
-  )
-
-```
-
-```{r}
-crime_change_type <- crime_long |>
-  filter(year %in% c(2016, 2021)) |>
-  select(CODGEO, year, crime_type, crime_count) |>
-  pivot_wider(
-    names_from = year,
-    values_from = crime_count,
-    names_prefix = "y_"
-  ) |>
-  mutate(
-    crime_rate_change = if_else(
-      y_2016 > 0,
-      (y_2021 - y_2016) / y_2016,
-      NA_real_
-    )
-  ) |>
-  left_join(
-    gentrif_vars |> select(CODGEO, gentrifying),
-    by = "CODGEO"
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "bottom",
+    axis.title.y.right = element_text(color = "#e74c3c"),
+    axis.text.y.right = element_text(color = "#e74c3c")
   )
 ```
 
-```{r}
-crime_change_summary <- crime_change_type |>
-  filter(is.finite(crime_rate_change)) |>
-  group_by(crime_type, gentrifying) |>
-  summarise(
-    mean_change = mean(crime_rate_change, na.rm = TRUE),
-    n_cities = n(),
-    .groups = "drop"
-  )
-```
-
-```{r}
-ggplot(crime_change_summary,
-       aes(x = crime_type,
-           y = mean_change,
-           fill = gentrifying)) +
-  geom_col(position = "dodge") +
-  coord_flip() +
-  labs(
-    x = "Type of crime",
-    y = "Mean rate of change (2016–2021)",
-    fill = "Gentrifying city",
-    title = "Mean change in crime counts by type\n  gentrified vs non gentrified cities"
-  ) +
-  theme_minimal()
-```
-
-Adjusting to population :
-
-```{r}
-crime_change_type_popadj <- data_final |>
-  pivot_longer(
-    cols = 8:22,
-    names_to = "crime_type",
-    values_to = "crime_count"
-  ) |>
-  filter(year %in% c(2016, 2021)) |>
-  select(CODGEO, year, crime_type, crime_count, insee_pop) |>
-  pivot_wider(
-    names_from = year,
-    values_from = c(crime_count, insee_pop),
-    names_sep = "_"
-  ) |>
-  mutate(
-    pop_adj_rate_change = if_else(
-      crime_count_2016 > 0 & insee_pop_2016 > 0,
-      ( (crime_count_2021 / crime_count_2016) /
-        (insee_pop_2021   / insee_pop_2016) ) - 1,
-      NA_real_
-    )
-  ) |>
-  left_join(
-    gentrif_vars |> select(CODGEO, gentrifying),
-    by = "CODGEO"
-  )
-
-crime_change_popadj_summary <- crime_change_type_popadj |>
-  filter(is.finite(pop_adj_rate_change)) |>
-  group_by(crime_type, gentrifying) |>
-  summarise(
-    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
-    n_cities = n(),
-    .groups = "drop"
-  )
-
-ggplot(crime_change_popadj_summary,
-       aes(x = crime_type,
-           y = mean_change,
-           fill = gentrifying)) +
-  geom_col(position = "dodge") +
-  coord_flip() +
-  labs(
-    x = "Type of crime",
-    y = "Crime growth net of population growth (2016–2021)",
-    fill = "Gentrifying city",
-    title = "Population adjusted crime change by type\nGentrified vs nongentrified cities"
-  ) +
-  theme_minimal()
-```
-
-```{r}
-crime_change_type_popadj_cat <- crime_change_type_popadj |>
-  mutate(
-    crime_category = case_when(
-      crime_type %in% c(
-        "Violences sexuelles",
-        "Violences physiques intrafamiliales",
-        "Violences physiques hors cadre familial",
-        "Vols avec armes",
-        "Vols violents sans arme"
-      ) ~ "Violent crimes",
-
-      crime_type %in% c(
-        "Vols sans violence contre des personnes",
-        "Vols de véhicule",
-        "Vols dans les véhicules",
-        "Vols d'accessoires sur véhicules",
-        "Cambriolages de logement",
-        "Destructions et dégradations volontaires",
-        "Escroqueries et fraudes aux moyens de paiement",
-        "Usage de stupéfiants",
-        "Trafic de stupéfiants"
-      ) ~ "Non violent crimes",
-
-      TRUE ~ NA_character_
-    )
-  )
-
-crime_change_popadj_cat_summary <- crime_change_type_popadj_cat |>
-  filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
-  group_by(crime_category, gentrifying) |>
-  summarise(
-    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
-    n_cities = n(),
-    .groups = "drop"
-  )
-
-ggplot(crime_change_popadj_cat_summary,
-       aes(x = crime_category,
-           y = mean_change,
-           fill = gentrifying)) +
-  geom_col(position = "dodge") +
-  labs(
-    x = "Crime category",
-    y = "Crime growth net of population growth (2016–2021)",
-    fill = "Gentrifying city",
-    title = "Population adjusted crime change by category\nGentrified vs non gentrified cities"
-  ) +
-  theme_minimal()
-```
-
-Crime category differences :
-
-```{r}
-crime_category_levels <- crime_change_type_popadj_cat |>
-  filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
-  group_by(gentrifying, crime_category) |>
-  summarise(
-    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
-    n_obs = n(),
-    .groups = "drop"
-  )
-
-knitr::kable(
-  crime_category_levels,
-  digits = 3,
-  col.names = c(
-    "Gentrifying city",
-    "Crime category",
-    "Mean adjusted crime change",
-    "Number of city–crime observations"
-  )
-)
-
-```
-
-```{r}
-crime_category_diff <- crime_change_type_popadj_cat |>
-  filter(is.finite(pop_adj_rate_change), !is.na(crime_category)) |>
-  group_by(gentrifying, crime_category) |>
-  summarise(
-    mean_change = mean(pop_adj_rate_change, na.rm = TRUE),
-    .groups = "drop"
-  ) |>
-  pivot_wider(
-    names_from = crime_category,
-    values_from = mean_change
-  ) |>
-  mutate(
-    violent_minus_nonviolent =
-      `Violent crimes` - `Non violent crimes`,
-    violent_minus_nonviolent_pp =
-      violent_minus_nonviolent * 100
-  )
-
-knitr::kable(
-  crime_category_diff,
-  digits = 3,
-  col.names = c(
-    "Gentrifying city",
-    "Mean change – Non‑violent crimes",
-    "Mean change – Violent crimes",
-    "Violent − Non‑violent",
-    "Violent − Non‑violent (pp)"
-  )
-)
-```
-
-In non‑gentrified cities, violent crime increased substantially relative
-to population, while non‑violent crime slightly declined.
-
-In gentrified cities, both violent and non‑violent crimes increased
-relative to population, but violent crime still grew much faster.
-
-The gap between violent and non‑violent crime growth is smaller in
-gentrified cities : violent crime is still rising everywhere but
-relatively less so in gentrified cities compared to non-violent crimes.
-
--\> Between 2016 and 2021, violent crimes increased faster than
-non‑violent crimes in both gentrified and non‑gentrified cities, net of
-population growth. However, the gap between violent and non‑violent
-crime growth is smaller in gentrified cities, suggesting a relative
-moderation of violent crime dynamics in these areas.”
 
 # Building a non binary gentrification index between first year and last year and checking for correlation with change in crime rate.
 
@@ -857,7 +568,6 @@ evolution <- data_final |>
 # Flipping signs for interpretation : making increases in low incomes and decrease in poverty show as positive values: this aligns indicators so higher values = more gentrification
 evolution <- evolution |>
   mutate(
-    d1_var  = -d1_var,
     pov_var = -pov_var
   )
 ```
@@ -883,7 +593,7 @@ evolution_std <- evolution_std |>
       (med_inc_var * 0.2) +     # Median income 
       (d9_var * 0.1) +          # Top income 
       (d1_var * 0.35) +          # Bottom income
-      (pov_var * 0.10)           # Poverty reduction 
+      (pov_var * 0.1)           # Poverty reduction 
   )
 
 
@@ -989,8 +699,9 @@ ggplot(crime_rate_change_continuous,
     legend.position = "right"
   )
 ```
+-> Visually, it seems to exist a slight correlation between gentrification intensity and crime rate change between 2016 and 2021 among gentrifiable cities
 
-Plotting the crime rate change among the three gentrification levels :
+Plotting the crime rate change among three arbitrary gentrification levels :
 
 ```{r}
 # Calculate confidence intervals
@@ -1032,6 +743,7 @@ ggplot(ci_stats |> filter(gent_category %in% c("Low", "High", "Medium")),
     panel.grid.minor = element_blank()
   )
 ```
+-> There is a diminution in crime rate between all three gentrification levels
 
 Crime change by type and gentrification intensity
 
@@ -1165,12 +877,11 @@ knitr::kable(
 ```
 
 -\> while non violent crimes rate decreases and violent crime rate
-increases for all groups, violent crimees increases less as
-gentrification intensifies
+increases for all groups, violent crimes increases less as
+gentrification intensifies while non violent crimes diminish roughly the same way for all groups
 
 Let's check if the changes are significant :
 
-:
 
 ```{r}
 # Tests whether crime rate changes differ significantly across the three gentrification levels
@@ -1318,30 +1029,34 @@ Calculating year over year growth rates for gentrifiable areas :
 
 ```{r}
 gent_yearly <- data_final |>
-# Calculating year over year growth rate
- filter(CODGEO %in% gentrifiable_areas) |>
- arrange(CODGEO, year) |>
- group_by(CODGEO) |>
- mutate(
-   price_g = log(Prixm2Moyen) - log(dplyr::lag(Prixm2Moyen)),
-   med_g   = log(MED) - log(dplyr::lag(MED)),
-   d9_g    = log(D9) - log(dplyr::lag(D9)),
-   d1_g    = -(log(D1) - log(dplyr::lag(D1))),
-   pov_g   = -(TP60 - dplyr::lag(TP60))
- ) |>
- ungroup() |>
- filter(!is.na(price_g)) |>
-  # Standardizing within each year
- mutate(
-   price_g_s = as.numeric(scale(price_g)),
-   med_g_s = as.numeric(scale(med_g)),
-   d9_g_s = as.numeric(scale(d9_g)),
-   d1_g_s = as.numeric(scale(d1_g)),
-   pov_g_s = as.numeric(scale(pov_g)),
-   # Creation of the index
-   gent_index = (price_g_s + med_g_s + d9_g_s + d1_g_s + pov_g_s) / 5
- )
-
+  filter(CODGEO %in% gentrifiable_areas) |>
+  arrange(CODGEO, year) |>
+  group_by(CODGEO) |>
+  mutate(
+    # Year-over-year growth rates (log differences)
+    price_g = log(Prixm2Moyen) - log(dplyr::lag(Prixm2Moyen)),
+    med_g   = log(MED) - log(dplyr::lag(MED)),
+    d9_g    = log(D9) - log(dplyr::lag(D9)),
+    d1_g    = -(log(D1) - log(dplyr::lag(D1))),
+    pov_g   = -(TP60 - dplyr::lag(TP60))
+  ) |>
+  ungroup() |>
+  filter(!is.na(price_g)) |>
+  mutate(
+    # Standardizing within the dataset
+    price_g_s = as.numeric(scale(price_g)),
+    med_g_s   = as.numeric(scale(med_g)),
+    d9_g_s    = as.numeric(scale(d9_g)),
+    d1_g_s    = as.numeric(scale(d1_g)),
+    pov_g_s   = as.numeric(scale(pov_g)),
+    
+    # Weighted index (SAME WEIGHTS as first-to-last year index)
+    gent_index = (price_g_s * 0.25) +
+                 (med_g_s * 0.20) +
+                 (d9_g_s * 0.10) +
+                 (d1_g_s * 0.35) +
+                 (pov_g_s * 0.10)
+  )
 # Calculate year-over-year crime rate change
 crime_yearly <- data_final |>
   filter(CODGEO %in% gentrifiable_areas) |>
