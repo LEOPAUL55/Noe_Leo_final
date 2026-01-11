@@ -273,18 +273,9 @@ ggplot(gent_by_pop,
   ) +
   theme_minimal(base_size = 14)
 ```
+### Criminality in France, evolution between 2016 and 2021
 
-
-
-
-
-
-
-
-
-
-
-# Descriptive analysis of the crime rate evolution from 2016 to 2021 - comparison between violent and non violent crimes
+To first understand criminality in France and its evolution, we represent it grouping crimes and offences according to the violence character (violent, non-violent). We consider as violent the following crimes: domestic physical violence, non domestic physical violence, armed robberies and non armed violent robberies. The rest is reported as non violent (non violent robberies against persons, vehicle thefts, theft of vehicle accessories, willful damage and vandalism, fraud and payment method fraud, drug use, drug dealing, home invasions).
 
 ```{r}
 crime_wide <- data_final |>
@@ -353,6 +344,28 @@ ggplot(crime_wide, aes(x = year)) +
     axis.text.y.right = element_text(color = "#e74c3c")
   )
 ```
+The above graphic shows the evolution of crime per type (violent, non violent) on the period. We observe a global decrease of non violent crime on the period, with an unstopped fall until 2020 followed by a new increase. The observation is different for the violent crime that have a positive trend on the period, with an only decrease between 2019 and 2020. The mix of both types' crime gives a decreasing trend for the total crime that shaped the non violent crime evolution, with a positive evolution the last year.
+
+### What correlation between gentrification and crime?
+
+Let's compare between 3 arbitrary gentrification categories among the "gentrifiable" cities : Low gentrification (bottom 25% of the index), medium gentrification (middle 50% of the index) and high gentrification (top 25% of the index).
+```{r}
+evolution_std_A_groups <- evolution_std_A |>
+  mutate(
+    gent_category = case_when(
+      gent_index > quantile(gent_index, 0.75, na.rm = TRUE) ~ "High",
+      gent_index > quantile(gent_index, 0.25, na.rm = TRUE) ~ "Medium",
+      TRUE ~ "Low"
+    ),
+    gent_category = factor(gent_category, levels = c("Low", "Medium", "High"))
+  )
+```
+Keeping the same nomenclature, the following graphic seems to depict a positive correlation between gentrification and crime. The period observes a global decrease in criminality, still different according to the degree of gentrification. Violent crimes rose everywhere, but in a more important way in highly gentrified cities. Same for the non violent crimes that decreased in every cities but less intensely in the highly gentrified cities compared to low and medium gentrified cities.
+
+
+
+
+
 
 
 # Cross sectional analysis
