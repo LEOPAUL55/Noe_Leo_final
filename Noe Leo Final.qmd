@@ -634,7 +634,6 @@ crime_change_type_cat <- crime_change_type_continuous |>
   )
 ```
 
-Summarizing by category :
 
 ```{r}
 
@@ -649,7 +648,6 @@ crime_cat_summary <- crime_change_type_cat |>
   )
 ```
 
-Violent vs non violent crime change by gentrification intensity :
 
 ```{r}
 # Plot
@@ -659,9 +657,9 @@ ggplot(crime_cat_summary,
   scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
   labs(
     x = "Crime Category",
-    y = "Population-Adjusted Crime Change (2016–2021)",
+    y = "Population-Adjusted Crime Rate Change (2016–2021)",
     fill = "Gentrification\nIntensity",
-    title = "Violent vs Non-Violent Crime Change\nby Gentrification Intensity"
+    title = "Violent vs Non-Violent Crime Rate Change\nby Gentrification Intensity"
   ) +
   theme_minimal()
 
@@ -669,7 +667,7 @@ ggplot(crime_cat_summary,
 knitr::kable(
   crime_cat_summary,
   digits = 3,
-  col.names = c("Crime Category", "Gentrification Level", "Mean Change", "N Observations")
+  col.names = c("Crime Category", "Gentrification Level", "Median Change in %", "N Observations")
 )
 ```
 The results reveal a clear gradient pattern: higher gentrification is associated with smaller crime changes in both directions.
@@ -680,120 +678,53 @@ Non-violent crimes decreased most in low-gentrification cities (-17%), moderatel
 
 This suggests that gentrification has a stabilizing effect on crime rates, dampening both the rise in violent crime and the decline in non-violent crime. Gentrifying areas experience more moderate changes compared to non-gentrifying areas.
 
-## Statistical tests
+To verify whether these differences are statistically significant, we conduct pairwise Wilcoxon tests with Bonferroni correction:
 
-Let's check if the changes are significant :
-
-Tests whether crime rate changes differ significantly across the three gentrification levels :
 ```{r}
-# Tests whether crime rate changes differ significantly across the three gentrification levels
-
-anova_result <- aov(crime_rate_change ~ gent_category, data = crime_rate_change_continuous)
-summary(anova_result)
-
-```
-
--> There is NO significant difference in total crime rate changes between the three gentrification categories (low,medium high), and there is NO significant linear relationship between the intensity of gentrification and changes in crime rates
-
-What if we're checking for significativity among violent crimes between gentrification categories only ?
-```{r}
-# Checking only for violent crimes
-
+# Prepare data for violent crimes
 violent_data <- crime_change_type_cat |>
   filter(crime_category == "Violent crimes", is.finite(pop_adj_rate_change)) |>
   group_by(CODGEO, gent_category) |>
-  summarise(median_change = median(pop_adj_rate_change), .groups = "drop")  # <- median here
+  summarise(median_change = median(pop_adj_rate_change), .groups = "drop")
 
-summary(aov(median_change ~ gent_category, data = violent_data))
-```
--> There ARE statistically significant differences in violent crime rate changes between cities with different gentrification levels
+# Prepare data for non-violent crimes
+nonviolent_data <- crime_change_type_cat |>
+  filter(crime_category == "Non violent crimes", is.finite(pop_adj_rate_change)) |>
+  group_by(CODGEO, gent_category) |>
+  summarise(median_change = median(pop_adj_rate_change), .groups = "drop")
 
-
-
-Plotting violent crime growth among gentrification intensities
-categories :
-```{r}
-# Get the medians for the plot
-violent_summary <- violent_data |>
-  group_by(gent_category) |>
-  summarise(
-    median_change = median(median_change, na.rm = TRUE),
-    # For error bars around median, we can use bootstrapped confidence intervals
-    # or use IQR/quantiles instead of SE
-    q25 = quantile(median_change, 0.25, na.rm = TRUE),
-    q75 = quantile(median_change, 0.75, na.rm = TRUE),
-    n = n()
-  )
-
-# Plot with median and IQR bars
-ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_category)) +
-  geom_col(alpha = 0.8) +
-  # Use IQR as error bars (shows middle 50% of data)
-  geom_errorbar(aes(ymin = q25, ymax = q75), 
-                width = 0.2, linewidth = 0.8) +
-  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
-  labs(
-    x = "Gentrification Intensity",
-    y = "Median Violent Crime Change (Pop-Adjusted)",
-    caption = "Error bars show interquartile range (25th-75th percentiles)"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
-```
-
-Overall test: Are there differences between groups?
-```{r}
-library(ggsignif)
-
-kruskal_test <- kruskal.test(median_change ~ gent_category, data = violent_data)
-print(kruskal_test)
-
-library(FSA)
-
-# Dunn's test with Bonferroni correction
-dunn_test <- dunnTest(median_change ~ gent_category, 
-                      data = violent_data,
-                      method = "bonferroni")
-print(dunn_test)
-
-# Or pairwise Wilcoxon tests
-pairwise_results <- pairwise.wilcox.test(
+# Pairwise Wilcoxon tests
+violent_pairwise <- pairwise.wilcox.test(
   violent_data$median_change,
   violent_data$gent_category,
   p.adjust.method = "bonferroni"
 )
-print(pairwise_results)
 
-# Epsilon-squared effect size
-n_total <- nrow(violent_data)
-chi_squared <- 6.9672
-df <- 2
-epsilon_squared <- (chi_squared - df + 1) / (n_total - df)
-print(paste("Effect size (ε²):", round(epsilon_squared, 3)))
+nonviolent_pairwise <- pairwise.wilcox.test(
+  nonviolent_data$median_change,
+  nonviolent_data$gent_category,
+  p.adjust.method = "bonferroni"
+)
 
-# Interpret:
-# ε² < 0.06: Small effect
-# 0.06 ≤ ε² < 0.14: Medium effect  
-# ε² ≥ 0.14: Large effect
-
-
+# Create combined table
+tibble(
+  Comparison = c("Low vs Medium", "Low vs High", "Medium vs High"),
+  `Violent crimes (p-value)` = c(
+    violent_pairwise$p.value["Medium", "Low"],
+    violent_pairwise$p.value["High", "Low"],
+    violent_pairwise$p.value["High", "Medium"]
+  ),
+  `Non-violent crimes (p-value)` = c(
+    nonviolent_pairwise$p.value["Medium", "Low"],
+    nonviolent_pairwise$p.value["High", "Low"],
+    nonviolent_pairwise$p.value["High", "Medium"]
+  )
+) |>
+  knitr::kable(digits = 4, caption = "Pairwise Wilcoxon Tests (Bonferroni corrected)")
 ```
--> There ARE significant differences between groups
+For violent crimes, high-gentrification cities differ significantly from both low-gentrification (p < 0.001) and medium-gentrification cities (p < 0.001), confirming that the dampening effect of gentrification on violent crime is statistically robust.
 
-
-Pairwise wilcox test :
-
-```{r}
-pairwise.wilcox.test(violent_data$median_change,
-                    violent_data$gent_category,
-                    p.adjust.method = "BH")
-
-# Calculate y positions
-y_max <- max(violent_summary$median_change + violent_summary$q75, na.rm = TRUE)
-
-  
-```
--> Similar results
+For non-violent crimes, no pairwise comparisons reach statistical significance (all p > 0.05), suggesting that the observed differences may be due to chance.
 
 
 # Panel Analysis
