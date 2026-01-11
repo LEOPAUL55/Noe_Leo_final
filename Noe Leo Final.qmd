@@ -150,10 +150,7 @@ Using these data, we can create a gentrification index that is implementable to 
 
 **Gentrification** = (**price_var** * 0.25) + (**MED_var** * 0.20) + (**D9_var** * 0.10) + (**D1_var** * 0.35) + (**TP60_var** * 0.10)
 
-Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, there are neither gentrification nor pauperization in the city). 
-
-
-
+Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, the city is as gentrify as the national mean). Finally, we exclude the city that have a median income greater than 60% of the national one, considering they are already composed of upper classes, so it cannot be gentrified.
 
 # Data Loading and Cleaning
 
@@ -1863,4 +1860,11 @@ In larger and medium cities there is a significantly negative correlation betwee
 # Conclusion
 ## Summary of key findings
 ## Limitations
+
+The main limitation of the analyse is the lack of data both in terms of year and city. Whole areas are missing, like Alsace or Moselle, as well as important cities at the arrondissement level (Marseille, Lyon). Moreover, using the Police data to study criminality can be biased. It can reflect the police activity or the number of police officers rather than the true number of crimes and offences. 
+
 ## Policy implications
+
+## References
+
+Ruth Glass (1964): https://www.tandfonline.com/doi/full/10.1080/03058034.2024.2425593 Neil Smith (1979): https://miguelangelmartinez.net/IMG/pdf/1979_smith_gentrification_japa.pdf
