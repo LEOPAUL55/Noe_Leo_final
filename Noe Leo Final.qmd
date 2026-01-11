@@ -140,21 +140,16 @@ Below is the description of variables that are used in the project.
 
 **insee_pop**: The city's population.
 
-# 3. Data analysis
-
-After obtaining clean data sets, we can now analyse it through several aspects. The first step is to build a gentrification index, that is a mathematical formula which enables to compute and compare the degree of gentrification per cities thanks to the available information in the data set (economic description, real estate price). Second, it will be possible to compute descriptive statistics about gentrification to have a better understanding of the process in France through the period. More precisely, to what extent are french cities affected by gentrification and where is the process the most intense on the map. In the same idea, descriptive statistics about crime in France will be computed to also understand this phenomenon and its evolution. Third, we will try to isolate with the data the causal link between the degree of gentrification and the criminality evolution in the cities using an econometric method.
-
-## a. Building a gentrification index
-
-Recalling the definition, gentrification is the process by which working class quarter are appropriated by upper classes, which exclude the initial population and replace it by a wealthier one. In the data, such a process can be observed using the data sets "ppsm" (real estate price) and "poverty" (economic information). Indeed, a gentrified city can be identified through a rise in the real estate price (Prix2Moyen) which will increase the city's standard living and rise the median income (MED) as well as the first and last decile (D1 and D9) and reduce the rate of poor people in the population (fall of TP60).
-
-Using these data, we can create a gentrification index that is implementable to any city using the following formula:
-
-**Gentrification** = (**price_var** * 0.25) + (**MED_var** * 0.20) + (**D9_var** * 0.10) + (**D1_var** * 0.35) + (**TP60_var** * 0.10)
-
-Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, the city is as gentrify as the national mean). Finally, we exclude the city that have a median income greater than 60% of the national one, considering they are already composed of upper classes, so it cannot be gentrified.
 
 # Descriptive analysis of the crime rate evolution from 2016 to 2021 - comparison between violent and non violent crimes
+
+To better understand whether gentrification affects interpersonal violence differently from property‑related crimes, we aggregate the 13 crime types into two broad categories:
+
+Violent crimes: Domestic physical violence, non‑domestic physical violence, armed robberies, and violent robberies without weapons.
+
+Non‑violent crimes: Non‑violent thefts, vehicle‑related crimes, burglaries, vandalism, fraud, and drug‑related offences.
+
+While non violent and total crimes decrease following roughly the same path, violent crimes increased from 2016-2021.
 
 ```{r}
 crime_wide <- data_final |>
@@ -225,6 +220,17 @@ ggplot(crime_wide, aes(x = year)) +
 ```
 
 # Building a gentrification index between first year and last year :
+
+After obtaining clean data sets, we can now analyse it through several aspects. The first step is to build a gentrification index, that is a mathematical formula which enables to compute and compare the degree of gentrification per cities thanks to the available information in the data set (economic description, real estate price). Second, it will be possible to compute descriptive statistics about gentrification to have a better understanding of the process in France through the period. More precisely, to what extent are french cities affected by gentrification and where is the process the most intense on the map. In the same idea, descriptive statistics about crime in France will be computed to also understand this phenomenon and its evolution. Third, we will try to isolate with the data the causal link between the degree of gentrification and the criminality evolution in the cities using an econometric method.
+
+Recalling the definition, gentrification is the process by which working class quarter are appropriated by upper classes, which exclude the initial population and replace it by a wealthier one. In the data, such a process can be observed using the data sets "ppsm" (real estate price) and "poverty" (economic information). Indeed, a gentrified city can be identified through a rise in the real estate price (Prix2Moyen) which will increase the city's standard living and rise the median income (MED) as well as the first and last decile (D1 and D9) and reduce the rate of poor people in the population (fall of TP60).
+
+Using these data, we can create a gentrification index that is implementable to any city using the following formula:
+
+**Gentrification** = (**price_var** * 0.25) + (**MED_var** * 0.20) + (**D9_var** * 0.10) + (**D1_var** * 0.35) + (**TP60_var** * 0.10)
+
+Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, the city is as gentrify as the national mean). Finally, we exclude the city that have a median income greater than 60% of the national one, considering they are already composed of upper classes, so it cannot be gentrified.
+
 
 Identifying areas that could gentrify :
 
@@ -395,7 +401,18 @@ ggplot(crime_rate_change_continuous,
     legend.position = "right"
   )
 ```
-Visually, a slight negative trend emerges: cities with higher gentrification indices tend to experience smaller reductions (or even increases) in crime rates compared to less gentrified cities. The cloud of points is dispersed, suggesting considerable heterogeneity.
+Visually, a slight positive trend emerges: cities with higher gentrification indices tend to experience smaller reductions (or even increases) in crime rates compared to less gentrified cities. The cloud of points is dispersed, suggesting considerable heterogeneity. However, running a pearson correlation test shows us that there is no linear relationship between gentrification intensity (continuous index) and crime rate change : 
+
+```{r}
+# Tests wether there's a linear relationship between gentrification intensity and crime change 
+cor.test(
+  crime_rate_change_continuous$gent_index,
+  crime_rate_change_continuous$crime_rate_change,
+  use = "complete.obs"
+)
+```
+
+
 
 
 ## Comparing crime rate changes across gentrification categories
@@ -417,7 +434,7 @@ evolution_std_A_groups <- evolution_std_A |>
 
 ```
 
-Plotting the crime rate change among three arbitrary gentrification levels :
+### Plotting the crime rate change among three arbitrary gentrification levels :
 
 ```{r}
 # Calculate confidence intervals
@@ -459,9 +476,21 @@ ggplot(ci_stats |> filter(gent_category %in% c("Low", "High", "Medium")),
     panel.grid.minor = element_blank()
   )
 ```
-All three categories experienced a reduction in crime rates between 2016 and 2021, consistent with national crime trends in France during this period. However, the magnitude of the reduction varies:
+All three categories experienced a reduction in crime rates between 2016 
+and 2021, consistent with national crime trends in France during this period. 
+While the magnitude of reduction appears to vary visually across gentrification 
+levels, an ANOVA test reveals these differences are not statistically significant:
 
-Crime change by type and gentrification intensity : 
+Tests whether crime rate changes differ significantly across the three gentrification levels :
+```{r}
+# Tests whether crime rate changes differ significantly across the three gentrification levels
+anova_result <- aov(crime_rate_change ~ gent_category, data = crime_rate_change_continuous)
+summary(anova_result)
+
+```
+While total crime rates show only a  diminution for all gentrification levels, different crime categories may respond differently to socioeconomic changes. We therefore disaggregate crime into 13 specific types and examine how each evolved across gentrification intensities between 2016 and 2021.
+
+For each city, we compute the population‑adjusted change in crime rates for each of the 13 crime categories, thus accounting for both changes in crime counts and changes in population size, providing a cleaner measure of crime‑rate evolution.
 ```{r}
 
 # Reshaping crime data per type
@@ -534,11 +563,48 @@ ggplot(crime_change_type_summary,
   ) +
   theme_minimal()
 ```
-We can see the that the crime rate changes in the same direction among the gentrifiable cities for all type of crimes, but with very heterogeneous intensity depending the gentrification intensity for some type of crimes (violences physiques intrafamiliales, vols avec armes, cambriolages de logements...)
+For each individual crime type, the direction of change (increase or decrease) is consistent across all three gentrification categories. However, the magnitude of change varies considerably depending on the gentrification intensity for certain crime types. 
+
+Kruskal-Wallis tests were conducted for each of the 13 crime categories 
+to assess whether population-adjusted crime rate changes differ 
+significantly across gentrification levels.
+
+Only one crime type showed a statistically significant difference: 
+**domestic physical violence** (Violences physiques intrafamiliales), 
+with χ²(2) = 19.09, p < 0.001. This indicates that gentrification 
+intensity significantly predicts how domestic violence evolved (positively)
+between 2016 and 2021.
+
+```{r}
+# Run Kruskal-Wallis for each crime type
+kruskal_by_crime_type <- crime_change_type_continuous |>
+  filter(is.finite(pop_adj_rate_change)) |>
+  group_by(crime_type) |>
+  summarise(
+    chi_squared = kruskal.test(pop_adj_rate_change ~ gent_category)$statistic,
+    p_value = kruskal.test(pop_adj_rate_change ~ gent_category)$p.value,
+    n = n(),
+    .groups = "drop"
+  ) |>
+  mutate(
+    significant = ifelse(p_value < 0.05, "Yes", "No")
+  ) |>
+  arrange(p_value)
+
+# Display results
+knitr::kable(kruskal_by_crime_type, 
+             digits = 4,
+             col.names = c("Crime Type", "Chi-squared", "P-value", "N", "Significant"))
+```
+
+
 
 ## Violent vs Non-violent breakdown
 
-What if we split crimes into 2 distinct categories : Violent vs Non Violent crimes ?
+Using the violent and non-violent crime categories defined in the 
+descriptive analysis section, we now examine whether gentrification 
+affects these two broad categories differently.
+
 ```{r}
 
 # Creating crime categories 
@@ -606,8 +672,13 @@ knitr::kable(
   col.names = c("Crime Category", "Gentrification Level", "Mean Change", "N Observations")
 )
 ```
+The results reveal a clear gradient pattern: higher gentrification is associated with smaller crime changes in both directions.
 
--> Very interesting results : cities that had a higher gentrification also witnessed a lower violent crime rate increase and a lower non violent crimes increase.
+Violent crimes increased everywhere, but the increase was much smaller in high-gentrification cities (+5%) compared to low-gentrification cities (+24%).
+
+Non-violent crimes decreased most in low-gentrification cities (-17%), moderately in medium-gentrification cities, and least in high-gentrification cities.
+
+This suggests that gentrification has a stabilizing effect on crime rates, dampening both the rise in violent crime and the decline in non-violent crime. Gentrifying areas experience more moderate changes compared to non-gentrifying areas.
 
 ## Statistical tests
 
@@ -620,12 +691,6 @@ Tests whether crime rate changes differ significantly across the three gentrific
 anova_result <- aov(crime_rate_change ~ gent_category, data = crime_rate_change_continuous)
 summary(anova_result)
 
-# Tests wether there's a linear relationship between gentrification intensity and crime change 
-cor.test(
-  crime_rate_change_continuous$gent_index,
-  crime_rate_change_continuous$crime_rate_change,
-  use = "complete.obs"
-)
 ```
 
 -> There is NO significant difference in total crime rate changes between the three gentrification categories (low,medium high), and there is NO significant linear relationship between the intensity of gentrification and changes in crime rates
