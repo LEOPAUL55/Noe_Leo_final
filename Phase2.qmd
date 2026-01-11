@@ -1,0 +1,402 @@
+---
+title: "Phase 2"
+author: "Noé MANSUY and Léo-Paul GARELLI"
+format: html
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
+
+```{r}
+#| message: false
+here::i_am("Noe_Leo_Final.Rproj")
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(vroom)
+library(data.table)
+library(readr)
+library(stringr)
+```
+
+# Data Loading and Cleaning
+
+## population 2018
+
+Source : https://www.insee.fr/fr/statistiques/5650720
+
+This is the 2018 population by IRIS code. Made by the INSEE.
+
+Because the 2018 income data is available by IRIS code rather than by
+GEO code, we need to weight each IRIS-level mean by its 2018 population
+in order to compute the correct city-level values. Since the 2018
+population data at the IRIS level is available for only 994 of the
+cities included in the other years, we will have to restrict our
+analysis to these 994 cities.
+
+```{r}
+pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
+    na = "s") |>
+  select(IRIS,P18_POP)
+```
+
+## Real estate prices
+
+Source :
+https://www.data.gouv.fr/datasets/indicateurs-immobiliers-par-commune-et-par-annee-prix-et-volumes-sur-la-periode-2014-2024
+
+This is a collection of various variables on residential housing market
+at the city level between 2014 and 2024. What is interesting for us is
+the mean price by square meter of the goods that have been sold each
+year. This was published by Boris Mericksay
+
+Real‑estate price data are provided as separate yearly CSV files. To
+improve efficiency and avoid redundant code, we use vroom’s multi‑file
+loading functionality to read all files simultaneously. The year is
+extracted from the file name, and city identifiers are harmonized to
+allow consistent merging with other datasets.
+
+```{r}
+ppsm <- vroom(
+  list.files(
+    here("data", "price per square meter"),
+    pattern = "\\.csv$",
+    full.names = TRUE
+  ),
+  col_select = c(INSEE_COM, Prixm2Moyen),
+  id = "source"
+) |>
+  transmute(
+    CODGEO = as.character(INSEE_COM),
+    year   = as.integer(str_extract(source, "\\d{4}")),
+    Prixm2Moyen
+  )
+```
+
+We need to add the information for Paris by arrondissements that are
+missing in the dataset above. To do so, we will use the data available
+at https://paris.notaires.fr/fr/carte-des-prix?utm_source=chatgpt.com.
+
+For simplicity, we only focus on the selling price of appartements in
+the city from 2016 to 2021 (trimester 4). The available file is a PDF
+that can be easily convert into a CSV file.
+
+```{r}
+ppsm_paris <- vroom(
+  here("data", "dvfparis.csv"),
+  delim = ",",
+  quote = "\"",
+  col_types = cols()  # infer types automatically
+)|>
+  mutate(
+    year    = as.integer(str_extract(Trimestre, "\\d{4}")),
+    quarter = as.integer(str_extract(Trimestre, "(?<=T)\\d"))
+  ) |>
+  filter(quarter == 4, year >= 2016, year <= 2021) |>
+  pivot_longer(
+    cols = -c(Trimestre, quarter, year, Centre),
+    names_to = "arrondissement",
+    values_to = "Prixm2Moyen"
+  ) |>
+  transmute(
+    CODGEO = as.character(75100 + as.integer(str_remove(arrondissement, "er|e"))),
+    year,
+    Prixm2Moyen = as.numeric(str_remove_all(Prixm2Moyen, "[ €]"))
+  ) |>
+  arrange(year, CODGEO)
+
+```
+
+After that, we just need to merge the two datasets to obtain clean data
+about the real estate price in France.
+
+```{r}
+ppsm <- bind_rows(ppsm, ppsm_paris) |>
+  arrange(year, CODGEO)
+```
+
+## Poverty
+
+sources :
+
+-   2016, 2017, 2018 :
+    https://www.data.gouv.fr/datasets/revenus-et-pauvrete-des-menages-aux-niveaux-national-et-local-revenus-localises-sociaux-et-fiscaux/
+
+-   2019 : https://www.insee.fr/fr/statistiques/6036902?sommaire=6036904
+
+-   2020 : https://www.insee.fr/fr/statistiques/6692392?sommaire=6692394
+
+-   2021 : https://www.insee.fr/fr/statistiques/7756729?sommaire=7756859
+
+These are collections of indicators of disposable income in France, at
+the city level, between 2016 and 2021. These are made by the Insee.
+
+We will only focus on the poverty rate, the median standard of living,
+the first and the ninth deciles.
+
+Poverty data are provided as separate yearly files with heterogeneous
+structures. Variable names differ across years, and the 2018 data are
+reported at the IRIS level rather than the commune level. To handle
+this, we implement a loading strategy that reads each file separately
+while restricting imports to the variables of interest (years
+2016:2021). Poverty indicators are harmonized across years. Non‑numeric
+values are explicitly converted to missing values during loading, but it
+won't affect our analysis because this only concerns small cities. The
+result is a consistent panel of indicators comparable across years.
+
+```{r}
+poverty_files <- list.files(
+  here("data", "poverty"),
+  pattern = "\\.csv$",
+  full.names = TRUE
+)
+
+load_poverty <- function(file) {
+
+ year <- as.integer(str_extract(basename(file), "\\d{4}"))
+
+
+  if (year %in% c(2016, 2017, 2019, 2020, 2021)) {
+
+    out <- vroom(
+      file,
+      delim = ";",
+      col_select = any_of(c(
+        "CODGEO",
+        "MED16", "MED17", "MED19", "MED20", "MED21",
+        "TP6016", "TP6017", "TP6019", "TP6020","TP6021",
+        "D116", "D117", "D119", "D120","D121",
+        "D916", "D917", "D919", "D920","D921"
+      ))
+    ) |>
+      transmute(
+        CODGEO,
+        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19", "MED20","MED21")))),
+        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019", "TP6020","TP6021")))),
+        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120","D121")))),
+        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920","D921")))),
+        year
+      )
+
+  } else if (year == 2018) {
+
+    out <- vroom(
+      file,
+      delim = ";",
+      col_select = any_of(c(
+        "IRIS",
+        "DISP_MED18",
+        "DISP_TP6018",
+        "DISP_D118",
+        "DISP_D918"
+      ))
+    ) |>
+      transmute(
+        IRIS,
+        MED  = DISP_MED18,
+        TP60 = DISP_TP6018,
+        D1   = DISP_D118,
+        D9   = DISP_D918,
+        year
+      )
+
+  }
+ 
+
+  
+  out |>
+    mutate(across(
+  any_of(c("MED", "TP60", "D1", "D9")),
+  ~ suppressWarnings(as.numeric(gsub(",", ".", .x)))
+))
+}
+
+poverty <- bind_rows(
+  lapply(poverty_files, load_poverty)
+)
+
+## Aggregate 2018 IRIS Data to City Level
+
+poverty_2018 <- poverty |>
+  filter(year == 2018) |>
+  left_join(pop2018_IRIS, by = "IRIS") |>
+  mutate(CODGEO = substr(IRIS, 1, 5)) |>
+  group_by(CODGEO) |>
+  summarise(
+    MED = weighted.mean(MED, P18_POP, na.rm = TRUE),
+    TP60 = weighted.mean(TP60, P18_POP, na.rm = TRUE),
+    D1 = weighted.mean(D1, P18_POP, na.rm = TRUE),
+    D9 = weighted.mean(D9, P18_POP, na.rm = TRUE),
+    year = 2018,
+    .groups = "drop"
+  )
+
+codgeo_2018 <- poverty_2018 |> pull(CODGEO)
+
+poverty <- bind_rows(
+  poverty |> filter(year != 2018),
+  poverty_2018
+) |>
+  filter(CODGEO %in% codgeo_2018)
+```
+
+
+
+## Delinquency
+
+Source:
+https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales
+
+Here is the loading of the database for the delinquency. This is a
+database of all the crimes and offences (except traffic offences) at the
+city level in France, published by French Police Force, since 2016.
+
+The CSV format of the file creates problems of fromat that must be
+solved (types of column, delimiotation...).
+
+The type of crimes must be reshape to long format (in rows) to wide
+format (in columns).
+
+The total number of crimes per year per city is computed by doing the
+sum of each type of crimes.
+
+```{r}
+crime <- vroom(
+  here("data_criminality.csv"),
+  delim = ";",
+  locale = locale(decimal_mark = ","),
+  col_select = c(annee, CODGEO_2025, indicateur, nombre, insee_pop),
+  col_types = cols(
+    annee = col_integer(),
+    nombre = col_integer(),
+    insee_pop = col_integer()
+  )
+) |>
+  filter(!indicateur %in% c("Usage de stupéfiants (AFD)", "Violences sexuelles")) |>
+  pivot_wider(
+    names_from = indicateur,
+    values_from = nombre,
+    values_fill = 0
+  ) |>
+  rename(CODGEO = CODGEO_2025, year = annee) |>
+  mutate(
+    total_crimes = rowSums(across(-c(CODGEO, year, insee_pop)), na.rm = TRUE)
+  )
+```
+
+## Selecting cities present in the 2018 data
+
+The analysis will only focus on the cities where all the informations
+are available on 2018, because of the IRIS nomenclature.
+
+The period that we will study is from 2016 to 2021. We are adding in the
+dataset the cities' name as well as removing the ones for which we don't
+have the information of the real estate price in at least one year.
+
+We also compute the crime rate.
+
+```{r}
+city_names <- vroom(
+  here("data", "poverty", "pov2016.csv"),
+  delim = ";",
+  col_select = c(CODGEO, LIBGEO)
+) |>
+  distinct()
+
+data_final <- poverty |>
+  left_join(crime, by = c("CODGEO", "year")) |>
+  left_join(ppsm, by = c("CODGEO", "year"))|>
+  select(-IRIS)|>
+  left_join(city_names, by = "CODGEO")|>
+  distinct(CODGEO, year, .keep_all = TRUE) |>
+  group_by(CODGEO) |>
+  filter(!is.na(Prixm2Moyen))|>
+  filter(n_distinct(year) == 6) |>
+  ungroup() |>
+  mutate(
+    crime_rate = (total_crimes/insee_pop)*100
+  )
+```
+
+We obtained a clean dataset for 897 cities between 2016 and 2021.
+
+# Cleaned data tables : summary and most important variables
+
+After loading the datasets, we needed to convert the IRIS code into the
+GEOCODE by weighting the poverty rate of each geocode by the population
+of the corresponding IRIS code. By doing that, we obtained clean data
+for 994 cities. We only focus on these cities in the analysis from 2016
+to 2021. We also computed the poverty rate for each city.
+
+We only kept the variables of interest by loading the datasets, that are
+the poverty rate, the first and last decile, the median income, the
+number of crimes per crime type and the real estate price (average price
+per square meter).Then we merged them into an only dataset that combines
+all the data per cities per years.
+
+```{r}
+descriptions <- c(
+  "Unique code that corresponds to one city. The first two numbers correspond to a department",
+  "Median income ",
+  "Poverty rate (set at less than 60% of the median income)",
+  "1st income decile",
+  "9th income decile",
+  "Corresponding year",
+  "The city's population",
+  "Number of domestic physical violences reported",
+  "Number of non domestic physical violences reported",
+  "Number of armed robberies reported",
+  "Number of non armed violent robberies reported",
+  "Number of non violent robberies against persons reported",
+  "Number of home invasions reported",
+  "Number of vehicle thefts reported",
+  "Number of thefts from vehicles reported",
+  "Number of thefts of vehicle accessories reported",
+  "Number of willful damages and vandalism reported",
+  "Number of drug uses reported",
+  "Number of drug dealing cases reported for the year",
+  "Number of frauds and payment method frauds reported for the year",
+  "Total number of crimes reported for this year",
+  "Price per square meter of the real estate goods sold for the year", 
+  "The city's name",
+  "Crime rate per 100 inhabitants"
+)
+
+summary <- data.table(
+  Variable = names(data_final),
+  Type = sapply(data_final, class),
+  Description = descriptions
+)
+
+knitr::kable(summary)
+
+dataset_info <- data.table(
+  Info = c("Number of rows", "Number of columns"),
+  Value = c(nrow(data_final), ncol(data_final)) 
+)
+
+knitr::kable(dataset_info)
+
+```
+
+# Research question :
+
+Does the acceleration of the gentrification process in certain French
+cities with more than 5000 inhabitants (2016-2021) correlate with a
+decrease in recorded crime in these same municipalities, and is there a
+displacement effect towards non-gentrified cities?
+
+The first goal will be to make a gentrification index per city with a
+few variables: square meter price growth, median wage growth, poverty
+rate growth.
+
+Then we will select the cities with the highest gentrification index
+(say top 20%) and compare it to the rest of the cities : do we observe a
+declination in terms of delinquency between the top 20% and the others?
+If yes, do we observe a spatial displacement of crime to non-gentrifying
+areas?
+
+
