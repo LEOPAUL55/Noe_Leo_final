@@ -9,6 +9,15 @@ editor:
 
 Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
 
+# 1. Research question
+
+Theorized during the 1960 decade, gentrification is an urban phenomenon defined as the appropriation of working-class neighborhoods by the upper class. More formally, gentrification materializes by a rise in the real estate market price, as well as a rise in the average standard linving of a quarter. Indeed, the rehabilitation of houses by upper classes leads to a rise in the real estate price market of the quarter. Disadvantaged classes are forced to leave to worse located areas and are replaced by a wealthier population in their initial neighborhood. This phenomenon creates a conflict within social classes that affects the society in different ways, by the education, the inequalities, the health or the criminality.
+
+This project aims to answer the following question: Does the gentrification process in certain French cities correlates with a decrease in recorded crime in these same municipalities, and is there a displacement effect towards non-gentrified cities? The purpose of the study is to estimate the effect of gentrification on criminality at the scale of France on the short and middle run. The goal is to have a better understanding of this phenomenon to implement adequate public policies. To do so, the study is based on the public data of 899 cities in France between 2016 and 2021.
+
+First, the study try to build a gentrification index that would be able to measure the degree of gentrification of each city on the period, based on the process definition. The idea is to have a better understanding of the span and intensity of the phenomenon in France and to separate cities by degree of gentrification. Then, the main goal is to estimate the impact of gentrification on the evolution of criminality by cities. The gentrification index will enable to estimate the direct and lagged effect of gentrification on the criminality's evolution for each city. Indeed, it will measure the effect of gentrification on the global and by type crime rate's evolution.
+
+# 2. Datasets descriptions
 
 ```{r}
 #| message: false
@@ -37,6 +46,114 @@ cat("✓ Data loaded successfully\n")
 cat("  - data_final:", n_distinct(data_final$CODGEO), "cities,", 
     n_distinct(data_final$year), "years\n")
 ```
+
+The first step of the project is to ensure the reliability of our findings by selecting adequate and accurate data. We need to create two data sets, with respectively a "level" and an "evolution" data set. The "evolution" one will be created thanks to the "level" one. To implement the method of study, essential informations are needed for describing the economic and criminality situation in every cities on the period. More precisely, the build of the gentrification index is based on economic informations such as the the real estate price market (square meter price), the median income, the poverty rate (defined as 60% of the median income) as well as the first and ninth deciles, for each city per year. For the criminality, the study rely on the number of committed crimes for each city per year and type. Thanks to the informations about the level of population, it is possible to compute the crime rate, global and per type.
+
+## a. Data sources
+
+1.  **Real estate price - Datagouv / Chambre des notaires de Paris** 
+
+The informations about the real estate price per city are available on the France state's site. They are given in the files called "Demande de valeur foncière" for every year, that is from 2016 to 2021. This is a collection of various variables on residential housing market at the city level between 2014 and 2024. What is interesting for us is the mean price by square meter of the goods that have been sold each year. This was published by Boris Mericksay. Unfortunatlely, the informations about Paris at the arrondissement level are missing in those files. These important informations can be found on the Chambre des notaires de Paris' site that gives the trimestrial average square meter price of selling. For simplicity, we only focus on the selling price of appartements in the city from 2016 to 2021 (trimester 4). The available file is a PDF that can be easily convert into a CSV file.
+
+2.  **Average standard of living - Insee** 
+
+The files "poverty" are collections of indicators of disposable income in France, at the city level, between 2016 and 2021. We will only focus on the poverty rate, the median standard of living, the first and the ninth deciles. Poverty data are provided as separate yearly files with heterogeneous structures. Variable names differ across years, and the 2018 data are reported at the IRIS level rather than the commune level. To handle this, we implement a loading strategy that reads each file separately while restricting imports to the variables of interest (years 2016:2021). Poverty indicators are harmonized across years. Non‑numeric values are explicitly converted to missing values during loading, but it won't affect our analysis because this only concerns small cities. The result is a consistent panel of indicators comparable across years.
+
+3.  **Criminality - Datagouv / Ministère de l'intérieur** 
+
+The CSV file "criminality" is a database of all the crimes and offences (except traffic offences) at the city level in France, published by French Police Force, since 2016. These offences were identified following a complaint filed by a victim, a report, a testimony, a flagrant offence, a denunciation, but also on the initiative of the security forces. The total number of crimes per year per city is computed by doing the sum of each type of crimes for every year. Thanks to the informations about the number of inhabitants per city given in the past files, it is is possible to compute the global crime rate and per type. We decided to exclude the crime "drug use (AFD)" and "sexual violence" due to the difference between the Police's data and the real situation, that would bias the analysis.
+
+## b. Informations about the data sets
+
+```{r, echo = FALSE}
+info <- function(df) {
+  data.frame(file = deparse(substitute(df)), Observations = nrow(df), Variables = ncol(df))
+}
+```
+
+```{r, echo = FALSE}
+ppsm <- readRDS("data/ppsm.rds")
+poverty <- readRDS("data/poverty.rds")
+crime <- readRDS("data/crime.rds")
+
+info_ppsm <- info(ppsm)
+info_poverty <- info(poverty)
+info_crime <- info(crime) 
+bind_rows(info_ppsm, info_poverty, info_crime) |> knitr::kable()
+```
+
+## c. Description of variables
+
+Below is the description of variables that are used in the project.
+
+**CODGEO**: Unique code that corresponds to one city. The first two numbers correspond to a department number.
+
+**LIBGEO**: Name of the city according to the CODGEO.
+
+**year**: year in which the data was collected.
+
+**Prixm2Moyen**: Average price per square meter of the real estate goods sold for the year.
+
+**MED**: Median income for this year.
+
+**TP60**: Poverty rate (set at less than 60% of the median income).
+
+**D1**: 1st income decile (income below which there are 10% of the population).
+
+**D9**: 9th income decile (income below which there are 90% of the population).
+
+**Violences physiques intrafamiliales**: Number of domestic physical violence reported for the year.
+
+**Violences physiques hors cadre familial**: Number of non domestic physical violence reported for the year.
+
+**Violences sexuelles**: Number of sexual violence reported for the year.
+
+**Vols avec armes**: Number of armed robberies reported for the year.
+
+**Vols sans arme**: Number of non armed violent robberies reported for the year.
+
+**Vols sans violence contre des personnes**: Number of non violent robberies against persons reported for the year.
+
+**Cambriolages de logement**: Number of home invasions reported for the year.
+
+**Vols de véhicules**: Number of vehicule theft reported for the year.
+
+**Vols dans les véhicules**: Number of theft from vehicules reported for the year.
+
+**Vols d'accessoires sur véhicules**: Number of theft of vehicle accessories reported for the year.
+
+**Destructions et dégradations volontaires**: Number of willful damage and vandalism reported for the year.
+
+**Usage de stupéfiants**: Number of reported drug use for the year.
+
+**Usage de stupéfiants (AFD)**: Number of illegal drug use sanctioned by fixed fine reported for the year.
+
+**Trafic de stupéfiants**: Number of drug dealing cases reported for the year.
+
+**Escroqueries et fraudes aux moyens de paiement**: Number of fraud and payment method fraud reported for the year.
+
+**total_crimes**: Total number of crimes per cities reported for this year.
+
+**crime_rate**: Total number of crimes per cities divided by the population number of the year.
+
+**insee_pop**: The city's population.
+
+# 3. Data analysis
+
+After obtaining clean data sets, we can now analyse it through several aspects. The first step is to build a gentrification index, that is a mathematical formula which enables to compute and compare the degree of gentrification per cities thanks to the available information in the data set (economic description, real estate price). Second, it will be possible to compute descriptive statistics about gentrification to have a better understanding of the process in France through the period. More precisely, to what extent are french cities affected by gentrification and where is the process the most intense on the map. In the same idea, descriptive statistics about crime in France will be computed to also understand this phenomenon and its evolution. Third, we will try to isolate with the data the causal link between the degree of gentrification and the criminality evolution in the cities using an econometric method.
+
+## a. Building a gentrification index
+
+Recalling the definition, gentrification is the process by which working class quarter are appropriated by upper classes, which exclude the initial population and replace it by a wealthier one. In the data, such a process can be observed using the data sets "ppsm" (real estate price) and "poverty" (economic information). Indeed, a gentrified city can be identified through a rise in the real estate price (Prix2Moyen) which will increase the city's standard living and rise the median income (MED) as well as the first and last decile (D1 and D9) and reduce the rate of poor people in the population (fall of TP60).
+
+Using these data, we can create a gentrification index that is implementable to any city using the following formula:
+
+**Gentrification** = (**price_var** * 0.25) + (**MED_var** * 0.20) + (**D9_var** * 0.10) + (**D1_var** * 0.35) + (**TP60_var** * 0.10)
+
+Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, there are neither gentrification nor pauperization in the city). 
+
+
+
 
 # Data Loading and Cleaning
 
@@ -415,6 +532,30 @@ Then we will select the cities with the highest gentrification index
 declination in terms of delinquency between the top 20% and the others?
 If yes, do we observe a spatial displacement of crime to non-gentrifying
 areas?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
