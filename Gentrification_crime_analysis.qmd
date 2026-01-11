@@ -156,7 +156,7 @@ MED2016 <- poverty |>
   select(CODGEO, MED) 
 
 POP2016 <- crime |>
-  filter (year == 2016) |>
+  filter (year == 2021) |>
   select(CODGEO, insee_pop)
 
 gentrification_1 <- ppsm_var |>
@@ -185,7 +185,61 @@ gentrification_12 <- gentrification_1 |>
 gentrification_1 |> head(10) |>
   select(CODGEO, LIBGEO, gentrification_index) |> 
   knitr::kable()
+
+gentrification_13 <- ppsm_var |>
+  left_join(poverty_var) |>
+  left_join(MED2016) |>
+  left_join(POP2016) |>
+  mutate(across(
+    c(price_var, MED_var, D9_var, D1_var, TP60_var),
+    scale
+  )) |>
+  mutate(
+    gentrification_index = if_else(
+      MED <= gentrification_min,
+      (price_var * 0.25) +      # housing price
+      (MED_var * 0.20) +        # median income
+      (D9_var * 0.10) +         # top income
+      (D1_var * 0.35) +         # bottom income
+      (TP60_var * 0.10),        # poverty reduction
+      0)
+  ) |>
+  arrange(desc(gentrification_index))
 ```
+```{r, echo=FALSE}
+gentrification_binned <- gentrification_12 |>
+  mutate(
+    pop_bin = cut(
+      insee_pop,
+      breaks = seq(
+        floor(min(insee_pop, na.rm = TRUE) / 10000) * 10000,
+        ceiling(max(insee_pop, na.rm = TRUE) / 10000) * 10000,
+        by = 10000
+      ),
+      right = FALSE
+    )
+  ) |>
+  group_by(pop_bin) |>
+  summarise(
+    mean_gentrification = mean(gentrification_index, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(gentrification_binned,
+       aes(x = pop_bin, y = mean_gentrification)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    x = "Population (bins of 10,000 inhabitants)",
+    y = "Average gentrification index",
+    title = "Average gentrification by population size"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+
 
 ```{r, echo=FALSE}
 gentrification_1_group <- gentrification_1 |>
