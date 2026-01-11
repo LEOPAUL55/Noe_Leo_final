@@ -1100,328 +1100,319 @@ All models show strong mean reversion (β ≈ -0.50), indicating that crime rate
 
 ## Granger Causality
 
-But maybe the causality is in the other direction ? does gentrification cause violent crime change or does violent crime causes gentrification ? Let's use Granger Causality
+Our analysis assumes that gentrification affects crime, but the reverse could also be true: areas with declining crime might attract more investment and gentrification. To test the direction of causality, we estimate two models for each crime type:
+
+Does lagged gentrification predict crime changes?
+Does lagged crime change predict gentrification?
+
 ```{r}
 library(plm)
 
-# Preparing balanced panel
-granger_data <- violent_crimes_panel |>
-  filter(!is.na(violent_change) & !is.na(gent_index) & !is.na(gent_index_lag1)) |>
+# Function to run Granger causality tests
+run_granger_tests <- function(crime_data, crime_change_var, crime_type_name) {
+  
+  # Prepare data
+  granger_data <- crime_data |>
+    filter(!is.na({{crime_change_var}}) & !is.na(gent_index) & !is.na(gent_index_lag1)) |>
+    group_by(CODGEO) |>
+    filter(n() >= 3) |>
+    ungroup()
+  
+  granger_panel <- pdata.frame(granger_data, index = c("CODGEO", "year"))
+  
+  # Model 1: Does gentrification cause crime change?
+  model_gent_causes_crime <- plm(
+    as.formula(paste0(deparse(substitute(crime_change_var)), " ~ gent_index_lag1")),
+    data = granger_panel,
+    model = "within",
+    effect = "twoways"
+  )
+  
+  # Prepare data for reverse causality
+  granger_data2 <- granger_data |>
+    group_by(CODGEO) |>
+    mutate(crime_change_lag1 = dplyr::lag({{crime_change_var}}, 1)) |>
+    ungroup() |>
+    filter(!is.na(crime_change_lag1))
+  
+  granger_panel2 <- pdata.frame(granger_data2, index = c("CODGEO", "year"))
+  
+  # Model 2: Does crime cause gentrification?
+  model_crime_causes_gent <- plm(
+    gent_index ~ crime_change_lag1,
+    data = granger_panel2,
+    model = "within",
+    effect = "twoways"
+  )
+  
+  # Extract results
+  tibble(
+    `Crime Type` = crime_type_name,
+    Direction = c("Gentrification → Crime", "Crime → Gentrification"),
+    Estimate = c(
+      summary(model_gent_causes_crime)$coefficients[1, "Estimate"],
+      summary(model_crime_causes_gent)$coefficients[1, "Estimate"]
+    ),
+    `P-value` = c(
+      summary(model_gent_causes_crime)$coefficients[1, "Pr(>|t|)"],
+      summary(model_crime_causes_gent)$coefficients[1, "Pr(>|t|)"]
+    )
+  )
+}
+
+# Prepare violent crimes data with lag
+violent_granger <- violent_crimes_panel |>
   group_by(CODGEO) |>
-  filter(n() >= 3) |>  # Need at least 3 observations per area
+  mutate(gent_index_lag1 = dplyr::lag(gent_index, 1)) |>
   ungroup()
 
-granger_panel <- pdata.frame(granger_data, index = c("CODGEO", "year"))
+# Prepare non-violent crimes data with lag
+nonviolent_granger <- nonviolent_crimes_panel |>
+  group_by(CODGEO) |>
+  mutate(gent_index_lag1 = dplyr::lag(gent_index, 1)) |>
+  ungroup()
 
-# Model 1: Crime change predicted by lagged gentrification
-model_gent_causes_crime <- plm(
-  violent_change ~ gent_index_lag1,
-  data = granger_panel,
-  model = "within",
-  effect = "individual"
-)
+# Prepare total crime data with lag
+total_granger <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>
+  arrange(CODGEO, year) |>
+  mutate(total_crime_rate = total_crimes / insee_pop) |>
+  left_join(gent_yearly |> select(CODGEO, year, gent_index), by = c("CODGEO", "year")) |>
+  group_by(CODGEO) |>
+  mutate(
+    crime_change = log(total_crime_rate + 0.0001) - log(dplyr::lag(total_crime_rate) + 0.0001),
+    gent_index_lag1 = dplyr::lag(gent_index, 1)
+  ) |>
+  ungroup()
 
-# Model 2: Reverse - does crime cause gentrification?
-granger_data2 <- granger_data |>
+# Run Granger tests for each crime type manually
+
+# TOTAL CRIME
+granger_total <- total_granger |>
+  filter(!is.na(crime_change) & !is.na(gent_index) & !is.na(gent_index_lag1)) |>
+  group_by(CODGEO) |>
+  filter(n() >= 3) |>
+  ungroup()
+
+granger_panel_total <- pdata.frame(granger_total, index = c("CODGEO", "year"))
+
+model_gent_crime_total <- plm(crime_change ~ gent_index_lag1,
+                               data = granger_panel_total,
+                               model = "within", effect = "twoways")
+
+granger_total2 <- granger_total |>
+  group_by(CODGEO) |>
+  mutate(crime_change_lag1 = dplyr::lag(crime_change, 1)) |>
+  ungroup() |>
+  filter(!is.na(crime_change_lag1))
+
+granger_panel_total2 <- pdata.frame(granger_total2, index = c("CODGEO", "year"))
+
+model_crime_gent_total <- plm(gent_index ~ crime_change_lag1,
+                               data = granger_panel_total2,
+                               model = "within", effect = "twoways")
+
+# VIOLENT CRIME
+granger_violent <- violent_granger |>
+  filter(!is.na(violent_change) & !is.na(gent_index) & !is.na(gent_index_lag1)) |>
+  group_by(CODGEO) |>
+  filter(n() >= 3) |>
+  ungroup()
+
+granger_panel_violent <- pdata.frame(granger_violent, index = c("CODGEO", "year"))
+
+model_gent_crime_violent <- plm(violent_change ~ gent_index_lag1,
+                                 data = granger_panel_violent,
+                                 model = "within", effect = "twoways")
+
+granger_violent2 <- granger_violent |>
   group_by(CODGEO) |>
   mutate(violent_change_lag1 = dplyr::lag(violent_change, 1)) |>
   ungroup() |>
   filter(!is.na(violent_change_lag1))
 
-granger_panel2 <- pdata.frame(granger_data2, index = c("CODGEO", "year"))
+granger_panel_violent2 <- pdata.frame(granger_violent2, index = c("CODGEO", "year"))
 
-model_crime_causes_gent <- plm(
-  gent_index ~ violent_change_lag1,
-  data = granger_panel2,
-  model = "within",
-  effect = "individual"
-)
+model_crime_gent_violent <- plm(gent_index ~ violent_change_lag1,
+                                 data = granger_panel_violent2,
+                                 model = "within", effect = "twoways")
 
-print("=== Does Gentrification Cause Crime? ===")
-summary(model_gent_causes_crime)
+# NON-VIOLENT CRIME
+granger_nonviolent <- nonviolent_granger |>
+  filter(!is.na(nonviolent_change) & !is.na(gent_index) & !is.na(gent_index_lag1)) |>
+  group_by(CODGEO) |>
+  filter(n() >= 3) |>
+  ungroup()
 
-print("=== Does Crime Cause Gentrification? ===")
-summary(model_crime_causes_gent)
-```
--> Granger causality tests reveal bidirectional relationships: gentrification 
-significantly reduces subsequent violent crime (β = -0.036, p < 0.001), while 
-violent crime reductions also predict increased gentrification (β = -0.137, 
-p = 0.041). This suggests a self-reinforcing cycle where safer neighborhoods 
-attract investment that further reduces crime.
+granger_panel_nonviolent <- pdata.frame(granger_nonviolent, index = c("CODGEO", "year"))
 
-Visualization 1: Reverse causality
-```{r}
-ggplot(granger_data2 |> filter(!is.na(violent_change_lag1) & !is.na(gent_index)), 
-       aes(x = violent_change_lag1, y = gent_index)) +
-  geom_point(alpha = 0.3, color = "steelblue") +
-  geom_smooth(method = "lm", color = "red", se = TRUE) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  labs(
-    x = "Previous Year's Violent Crime Change",
-    y = "This Year's Gentrification Index",
-    title = "Crime Drives Gentrification Patterns",
-    subtitle = "Areas with declining crime attract more gentrification (r = -0.19, p < 0.001)"
-  ) +
-  theme_minimal()
-```
+model_gent_crime_nonviolent <- plm(nonviolent_change ~ gent_index_lag1,
+                                    data = granger_panel_nonviolent,
+                                    model = "within", effect = "twoways")
 
-## Heterogeneity by city size
+granger_nonviolent2 <- granger_nonviolent |>
+  group_by(CODGEO) |>
+  mutate(nonviolent_change_lag1 = dplyr::lag(nonviolent_change, 1)) |>
+  ungroup() |>
+  filter(!is.na(nonviolent_change_lag1))
 
-Comparing the effects of gentrification on  richer vs poorer areas :
-```{r}
-# Separating areas by income
-interaction_data <- violent_crimes_panel |>
-  left_join(baseline |> select(CODGEO, baseline_med), by = "CODGEO") |>
-  mutate(
-    income_tercile = ntile(baseline_med, 3),
-    income_group = case_when(
-      income_tercile == 1 ~ "Low Income",
-      income_tercile == 2 ~ "Medium Income",
-      income_tercile == 3 ~ "High Income"
-    )
-  ) |>
-  filter(!is.na(violent_change) & !is.na(gent_index_lag1))
+granger_panel_nonviolent2 <- pdata.frame(granger_nonviolent2, index = c("CODGEO", "year"))
 
-# Test by income group
-interaction_results <- interaction_data |>
-  group_by(income_group) |>
-  summarise(
-    correlation = cor(gent_index_lag1, violent_change, use = "complete.obs"),
-    p_value = cor.test(gent_index_lag1, violent_change)$p.value,
-    n = n()
+model_crime_gent_nonviolent <- plm(gent_index ~ nonviolent_change_lag1,
+                                    data = granger_panel_nonviolent2,
+                                    model = "within", effect = "twoways")
+
+# Create summary table
+granger_results <- tibble(
+  `Crime Type` = c("Total", "Total", "Violent", "Violent", "Non-violent", "Non-violent"),
+  Direction = rep(c("Gentrification → Crime", "Crime → Gentrification"), 3),
+  Estimate = c(
+    summary(model_gent_crime_total)$coefficients[1, "Estimate"],
+    summary(model_crime_gent_total)$coefficients[1, "Estimate"],
+    summary(model_gent_crime_violent)$coefficients[1, "Estimate"],
+    summary(model_crime_gent_violent)$coefficients[1, "Estimate"],
+    summary(model_gent_crime_nonviolent)$coefficients[1, "Estimate"],
+    summary(model_crime_gent_nonviolent)$coefficients[1, "Estimate"]
+  ),
+  `P-value` = c(
+    summary(model_gent_crime_total)$coefficients[1, "Pr(>|t|)"],
+    summary(model_crime_gent_total)$coefficients[1, "Pr(>|t|)"],
+    summary(model_gent_crime_violent)$coefficients[1, "Pr(>|t|)"],
+    summary(model_crime_gent_violent)$coefficients[1, "Pr(>|t|)"],
+    summary(model_gent_crime_nonviolent)$coefficients[1, "Pr(>|t|)"],
+    summary(model_crime_gent_nonviolent)$coefficients[1, "Pr(>|t|)"]
   )
+) |>
+  mutate(`P-value` = ifelse(`P-value` < 0.001, "< 0.001", round(`P-value`, 3)))
 
-print(interaction_results)
-
-# Regression with interaction
-interaction_model <- lm(violent_change ~ gent_index_lag1 * income_group, 
-                        data = interaction_data)
-summary(interaction_model)
+knitr::kable(granger_results, 
+             digits = 3, 
+             caption = "Granger Causality Tests by Crime Type")
 ```
--> There is NO statistically significant difference in how gentrification affects violent crime across income groups.
+After controlling for city fixed effects, year fixed effects, and department crime trends, neither own gentrification nor neighbor gentrification significantly predicts crime changes. This suggests that there is no evidence of short term spatial spillovers or crime displacement to neighboring areas once we account for common temporal shocks at the city level. However, this result has significant limitations and should not be interpreted as "gentrification has no spatial spillover effect" (see Conclusion)
 
-
-
-Visualization 1: Interaction effect
-```{r}
-ggplot(interaction_data |> filter(!is.na(income_group)), 
-       aes(x = gent_index_lag1, y = violent_change, color = income_group)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method = "lm", se = TRUE) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_manual(values = c("Low Income" = "#e74c3c", 
-                                 "Medium Income" = "#f39c12", 
-                                 "High Income" = "#27ae60")) +
-  labs(
-    x = "Previous Year's Gentrification Index",
-    y = "Violent Crime Change",
-    color = "Initial Income Level",
-    title = "Gentrification's Effect on Crime Varies by Initial Income",
-    subtitle = "Gentrification REDUCES crime in low-income areas, but INCREASES it in high-income areas"
-  ) +
-  theme_minimal()
-```
 ## Spatial spillover effects
 
-Do neighboring areas' gentrification affect local crime?
+Does gentrification in neighboring cities affect local crime? To test this, we compute the average gentrification index of other cities within the same department (excluding the city itself) and examine whether this "neighbor gentrification" predicts local crime changes. We also control for department-level crime trends to ensure that spillover effects are not simply capturing regional dynamics.
 ```{r}
-#Identifying department from CODGEO
-spatial_data <- violent_crimes_panel |>
-  mutate(department = substr(CODGEO, 1, 2)) |>
-  group_by(department, year) |>
-  mutate(
-    # Average gentrification in the same department (excluding self)
-    n_in_dept = n(),
-    sum_gent_dept = sum(gent_index, na.rm = TRUE),
-    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1)
-  ) |>
-  ungroup() |>
-  group_by(CODGEO) |>
-  mutate(
-    neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1)
-  ) |>
-  ungroup() |>
-  filter(!is.na(violent_change) & !is.na(neighbor_gent_lag1))
+library(plm)
 
-# Does neighboring gentrification affect local crime?
-cor_neighbor <- cor.test(spatial_data$neighbor_gent_lag1, spatial_data$violent_change)
-print("=== Neighboring Gentrification Effect ===")
-print(paste("Correlation:", round(cor_neighbor$estimate, 4)))
-print(paste("P-value:", round(cor_neighbor$p.value, 4)))
-
-# Combined model
-spatial_model <- lm(violent_change ~ gent_index_lag1 + neighbor_gent_lag1, 
-                    data = spatial_data)
-summary(spatial_model)
-```
-
-```{r}
-# First, create total crime change variable
-total_crime_panel <- data_final |>
-  filter(CODGEO %in% gentrifiable_areas) |>
-  arrange(CODGEO, year) |>
-  mutate(
-    total_crime_rate = total_crimes / insee_pop
-  ) |>
-  left_join(
-    gent_yearly |> select(CODGEO, year, gent_index),
-    by = c("CODGEO", "year")
-  ) |>
-  group_by(CODGEO) |>
-  mutate(
-    total_crime_change = log(total_crime_rate + 0.0001) - 
-                         log(dplyr::lag(total_crime_rate) + 0.0001),
-    gent_index_lag1 = dplyr::lag(gent_index, 1)
-  ) |>
-  ungroup()
-
-# Now run the same spatial analysis for total crimes
-spatial_total <- total_crime_panel |>
+# TOTAL CRIME with year controls
+spatial_total <- total_spatial |>
   mutate(department = substr(CODGEO, 1, 2)) |>
   group_by(department, year) |>
   mutate(
     n_in_dept = n(),
     sum_gent_dept = sum(gent_index, na.rm = TRUE),
-    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1)
+    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1),
+    sum_crime_dept = sum(crime_change, na.rm = TRUE),
+    dept_crime_change = (sum_crime_dept - crime_change) / (n_in_dept - 1)
   ) |>
   ungroup() |>
   group_by(CODGEO) |>
-  mutate(neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1)) |>
+  mutate(
+    neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1),
+    dept_crime_change_lag1 = dplyr::lag(dept_crime_change, 1)
+  ) |>
   ungroup() |>
-  filter(!is.na(total_crime_change) & !is.na(neighbor_gent_lag1))
+  filter(!is.na(crime_change) & !is.na(neighbor_gent_lag1) & !is.na(gent_index_lag1) & !is.na(dept_crime_change_lag1))
 
-# Correlation
-cor_total_neighbor <- cor.test(spatial_total$neighbor_gent_lag1, 
-                               spatial_total$total_crime_change)
-print("=== TOTAL CRIMES: Neighboring Gentrification Effect ===")
-print(paste("Correlation:", round(cor_total_neighbor$estimate, 4)))
-print(paste("P-value:", round(cor_total_neighbor$p.value, 4)))
+panel_total <- pdata.frame(spatial_total, index = c("CODGEO", "year"))
 
-# Combined model
-spatial_model_total <- lm(total_crime_change ~ gent_index_lag1 + neighbor_gent_lag1, 
-                          data = spatial_total)
-summary(spatial_model_total)
-```
-```{r}
-# First calculate non-violent crimes
-nonviolent_panel <- data_final |>
-  filter(CODGEO %in% gentrifiable_areas) |>
-  arrange(CODGEO, year) |>
-  mutate(
-    nonviolent_total = rowSums(
-      across(c(
-        `Vols sans violence contre des personnes`,
-        `Vols de véhicule`,
-        `Vols dans les véhicules`,
-        `Vols d'accessoires sur véhicules`,
-        `Cambriolages de logement`,
-        `Destructions et dégradations volontaires`,
-        `Escroqueries et fraudes aux moyens de paiement`,
-        `Usage de stupéfiants`,
-        `Trafic de stupéfiants`
-      )),
-      na.rm = TRUE
-    ),
-    nonviolent_rate = nonviolent_total / insee_pop
-  ) |>
-  left_join(
-    gent_yearly |> select(CODGEO, year, gent_index),
-    by = c("CODGEO", "year")
-  ) |>
-  group_by(CODGEO) |>
-  mutate(
-    nonviolent_change = log(nonviolent_rate + 0.0001) - 
-                       log(dplyr::lag(nonviolent_rate) + 0.0001),
-    gent_index_lag1 = dplyr::lag(gent_index, 1)
-  ) |>
-  ungroup()
+model_total <- plm(crime_change ~ gent_index_lag1 + neighbor_gent_lag1 + dept_crime_change_lag1,
+                   data = panel_total,
+                   model = "within",
+                   effect = "twoways")
 
-# Spatial analysis for non-violent crimes
-spatial_nonviolent <- nonviolent_panel |>
+# VIOLENT CRIME with year controls
+spatial_violent <- violent_spatial |>
   mutate(department = substr(CODGEO, 1, 2)) |>
   group_by(department, year) |>
   mutate(
     n_in_dept = n(),
     sum_gent_dept = sum(gent_index, na.rm = TRUE),
-    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1)
+    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1),
+    sum_crime_dept = sum(violent_change, na.rm = TRUE),
+    dept_crime_change = (sum_crime_dept - violent_change) / (n_in_dept - 1)
   ) |>
   ungroup() |>
   group_by(CODGEO) |>
-  mutate(neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1)) |>
-  ungroup() |>
-  filter(!is.na(nonviolent_change) & !is.na(neighbor_gent_lag1))
-
-# Correlation
-cor_nonviolent_neighbor <- cor.test(spatial_nonviolent$neighbor_gent_lag1, 
-                                    spatial_nonviolent$nonviolent_change)
-print("=== NON-VIOLENT CRIMES: Neighboring Gentrification Effect ===")
-print(paste("Correlation:", round(cor_nonviolent_neighbor$estimate, 4)))
-print(paste("P-value:", round(cor_nonviolent_neighbor$p.value, 4)))
-
-# Combined model
-spatial_model_nonviolent <- lm(nonviolent_change ~ gent_index_lag1 + neighbor_gent_lag1, 
-                               data = spatial_nonviolent)
-summary(spatial_model_nonviolent)
-```
-
-
--> Spillover effect for total crimes, not violent crimes and violent crimes : Cities surrounded by slowly-gentrifying (or non-gentrifying) neighbors tend to experience MORE crime growth.
-
-## Heterogeneity by city size
-
-Do we observe different effects depending on the size of the city ? (urban/rural comparison based on population)
-```{r}
-# Creating urban/rural indicator based on population
-pop_data <- data_final |>
-  group_by(CODGEO) |>
-  summarise(mean_pop = mean(insee_pop, na.rm = TRUE))
-
-urban_rural_data <- violent_crimes_panel |>
-  left_join(pop_data, by = "CODGEO") |>
   mutate(
-    area_type = case_when(
-      mean_pop > 50000 ~ "Large City",
-      mean_pop > 10000 ~ "Medium City",
-      TRUE ~ "Small City"
-    )
+    neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1),
+    dept_crime_change_lag1 = dplyr::lag(dept_crime_change, 1)
   ) |>
-  filter(!is.na(violent_change) & !is.na(gent_index_lag1))
+  ungroup() |>
+  filter(!is.na(violent_change) & !is.na(neighbor_gent_lag1) & !is.na(gent_index_lag1) & !is.na(dept_crime_change_lag1))
 
-# Testing by area type
-urban_rural_results <- urban_rural_data |>
-  group_by(area_type) |>
-  summarise(
-    correlation = cor(gent_index_lag1, violent_change, use = "complete.obs"),
-    p_value = cor.test(gent_index_lag1, violent_change)$p.value,
-    n = n()
+panel_violent <- pdata.frame(spatial_violent, index = c("CODGEO", "year"))
+
+model_violent <- plm(violent_change ~ gent_index_lag1 + neighbor_gent_lag1 + dept_crime_change_lag1,
+                     data = panel_violent,
+                     model = "within",
+                     effect = "twoways")
+
+# NON-VIOLENT CRIME with year controls
+spatial_nonviolent <- nonviolent_spatial |>
+  mutate(department = substr(CODGEO, 1, 2)) |>
+  group_by(department, year) |>
+  mutate(
+    n_in_dept = n(),
+    sum_gent_dept = sum(gent_index, na.rm = TRUE),
+    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1),
+    sum_crime_dept = sum(nonviolent_change, na.rm = TRUE),
+    dept_crime_change = (sum_crime_dept - nonviolent_change) / (n_in_dept - 1)
+  ) |>
+  ungroup() |>
+  group_by(CODGEO) |>
+  mutate(
+    neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1),
+    dept_crime_change_lag1 = dplyr::lag(dept_crime_change, 1)
+  ) |>
+  ungroup() |>
+  filter(!is.na(nonviolent_change) & !is.na(neighbor_gent_lag1) & !is.na(gent_index_lag1) & !is.na(dept_crime_change_lag1))
+
+panel_nonviolent <- pdata.frame(spatial_nonviolent, index = c("CODGEO", "year"))
+
+model_nonviolent <- plm(nonviolent_change ~ gent_index_lag1 + neighbor_gent_lag1 + dept_crime_change_lag1,
+                        data = panel_nonviolent,
+                        model = "within",
+                        effect = "twoways")
+
+# Create summary table
+results_spatial <- bind_rows(
+  tibble(
+    `Crime Type` = "Total",
+    Variable = c("Own gentrification (Lag 1)", "Neighbor gentrification (Lag 1)", "Dept. crime change (Lag 1)"),
+    Estimate = summary(model_total)$coefficients[1:3, "Estimate"],
+    `P-value` = summary(model_total)$coefficients[1:3, "Pr(>|t|)"]
+  ),
+  tibble(
+    `Crime Type` = "Violent",
+    Variable = c("Own gentrification (Lag 1)", "Neighbor gentrification (Lag 1)", "Dept. crime change (Lag 1)"),
+    Estimate = summary(model_violent)$coefficients[1:3, "Estimate"],
+    `P-value` = summary(model_violent)$coefficients[1:3, "Pr(>|t|)"]
+  ),
+  tibble(
+    `Crime Type` = "Non-violent",
+    Variable = c("Own gentrification (Lag 1)", "Neighbor gentrification (Lag 1)", "Dept. crime change (Lag 1)"),
+    Estimate = summary(model_nonviolent)$coefficients[1:3, "Estimate"],
+    `P-value` = summary(model_nonviolent)$coefficients[1:3, "Pr(>|t|)"]
   )
+) |>
+  mutate(`P-value` = ifelse(`P-value` < 0.001, "< 0.001", round(`P-value`, 3)))
 
-print(urban_rural_results)
-
-# Visualization
-ggplot(urban_rural_data, aes(x = gent_index_lag1, y = violent_change, color = area_type)) +
-  geom_point(alpha = 0.3) +
-  geom_smooth(method = "lm", se = TRUE) +
-  facet_wrap(~area_type) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  labs(
-    x = "Previous Year's Gentrification Index",
-    y = "Violent Crime Change",
-    title = "Gentrification-Crime Relationship by City Size"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
+knitr::kable(results_spatial, 
+             digits = 3, 
+             caption = "Spatial Spillover Effects with City and Year Fixed Effects")
 ```
-In larger and medium cities there is a significantly negative correlation between the lagged gentrification and violent crime change rate, but not in small cities.
+
+After controlling for city fixed effects, year fixed effects, and department crime trends, neither own gentrification nor neighbor gentrification significantly predicts crime changes. This suggests that there is no evidence of spatial spillovers or crime displacement to neighboring areas once we account for common temporal shocks at the city level. This result however has huge limitations and shouldn't be interpreted as "gentrification doesn't have any spatial spillover effect" (see conclusion).
 
 # Conclusion
 ## Summary of key findings
 ## Limitations
 
 The main limitation of the analyse is the lack of data both in terms of year and city. Whole areas are missing, like Alsace or Moselle, as well as important cities at the arrondissement level (Marseille, Lyon). Moreover, using the Police data to study criminality can be biased. It can reflect the police activity or the number of police officers rather than the true number of crimes and offences. 
-
-## Policy implications
 
 ## References
 
