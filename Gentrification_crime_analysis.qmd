@@ -295,6 +295,9 @@ ggplot(gentrification_1, aes(x = gentrification_index)) +
   theme_minimal()
 ```
 
+### Criminality in France, evolution between 2016 and 2021
+
+To first understand criminality in France and its evolution, we represent it grouping crimes and offences according to the violence character (violent, non-violent). We consider as violent the following crimes: domestic physical violence, non domestic physical violence, armed robberies and non armed violent robberies. The rest is reported as non violent (non violent robberies against persons, vehicle thefts, theft of vehicle accessories, willful damage and vandalism, fraud and payment method fraud, drug use, drug dealing, home invasions).
 
 ```{r, echo=FALSE, warning=FALSE}
 crime_wide <- crime |>
@@ -363,6 +366,9 @@ ggplot(crime_wide, aes(x = year)) +
     axis.text.y.right = element_text(color = "#e74c3c")
   )
 ```
+
+The above graphic shows the evolution of crime per type (violent, non violent) on the period. We observe a global decrease of non violent crime on the period, with an unstopped fall until 2020 followed by a new increase. The observation is different for the violent crime that have a positive trend on the period, with an only decrease between 2019 and 2020. The mix of both types' crime gives a decreasing trend for the total crime that shaped the non violent crime evolution, with a positive evolution the last year. 
+
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 #Restructuring data to have 2016 and 2021 side by side for comparison
 crime_rate_change_continuous <- crime |>
@@ -413,8 +419,6 @@ ggplot(crime_rate_change_continuous,
   ) +
   theme_minimal()
 ```
-
-
 
 ## References
 
