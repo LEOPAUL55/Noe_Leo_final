@@ -1,16 +1,18 @@
 ---
-title: "Phase 2"
+title: "Phase 2 - Data Loading and Cleaning"
 author: "Noé MANSUY and Léo-Paul GARELLI"
-format: html
+format: pdf
 editor: 
   markdown: 
     wrap: 72
 ---
 
-Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
+Github project: https://github.com/LEOPAUL55/Noe_Leo_final.git
 
 ```{r}
-#| message: false
+#| label: setup
+#| include: false
+
 here::i_am("Noe_Leo_Final.Rproj")
 library(here)
 library(dplyr)
@@ -20,6 +22,9 @@ library(vroom)
 library(data.table)
 library(readr)
 library(stringr)
+
+# Suppress all messages globally
+options(dplyr.summarise.inform = FALSE)
 ```
 
 # Data Loading and Cleaning
@@ -38,9 +43,12 @@ cities included in the other years, we will have to restrict our
 analysis to these 994 cities.
 
 ```{r}
+#| message: false
+#| warning: false
+
 pop2018_IRIS <- read_delim(here("data","pop2018.csv"),
     na = "s") |>
-  select(IRIS,P18_POP)
+  select(IRIS, P18_POP)
 ```
 
 ## Real estate prices
@@ -60,6 +68,9 @@ extracted from the file name, and city identifiers are harmonized to
 allow consistent merging with other datasets.
 
 ```{r}
+#| message: false
+#| warning: false
+
 ppsm <- vroom(
   list.files(
     here("data", "price per square meter"),
@@ -67,7 +78,8 @@ ppsm <- vroom(
     full.names = TRUE
   ),
   col_select = c(INSEE_COM, Prixm2Moyen),
-  id = "source"
+  id = "source",
+  show_col_types = FALSE
 ) |>
   transmute(
     CODGEO = as.character(INSEE_COM),
@@ -85,12 +97,16 @@ the city from 2016 to 2021 (trimester 4). The available file is a PDF
 that can be easily convert into a CSV file.
 
 ```{r}
+#| label: load-paris
+#| message: false
+#| warning: false
+
 ppsm_paris <- vroom(
   here("data", "dvfparis.csv"),
   delim = ",",
   quote = "\"",
-  col_types = cols()  # infer types automatically
-)|>
+  show_col_types = FALSE
+) |>
   mutate(
     year    = as.integer(str_extract(Trimestre, "\\d{4}")),
     quarter = as.integer(str_extract(Trimestre, "(?<=T)\\d"))
@@ -108,6 +124,8 @@ ppsm_paris <- vroom(
   ) |>
   arrange(year, CODGEO)
 
+ppsm <- bind_rows(ppsm, ppsm_paris) |>
+  arrange(year, CODGEO)
 ```
 
 After that, we just need to merge the two datasets to obtain clean data
@@ -148,6 +166,10 @@ won't affect our analysis because this only concerns small cities. The
 result is a consistent panel of indicators comparable across years.
 
 ```{r}
+#| label: load-poverty
+#| message: false
+#| warning: false
+
 poverty_files <- list.files(
   here("data", "poverty"),
   pattern = "\\.csv$",
@@ -155,34 +177,30 @@ poverty_files <- list.files(
 )
 
 load_poverty <- function(file) {
-
- year <- as.integer(str_extract(basename(file), "\\d{4}"))
-
+  year <- as.integer(str_extract(basename(file), "\\d{4}"))
 
   if (year %in% c(2016, 2017, 2019, 2020, 2021)) {
-
     out <- vroom(
       file,
       delim = ";",
       col_select = any_of(c(
         "CODGEO",
         "MED16", "MED17", "MED19", "MED20", "MED21",
-        "TP6016", "TP6017", "TP6019", "TP6020","TP6021",
-        "D116", "D117", "D119", "D120","D121",
-        "D916", "D917", "D919", "D920","D921"
-      ))
+        "TP6016", "TP6017", "TP6019", "TP6020", "TP6021",
+        "D116", "D117", "D119", "D120", "D121",
+        "D916", "D917", "D919", "D920", "D921"
+      )),
+      show_col_types = FALSE
     ) |>
       transmute(
         CODGEO,
-        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19", "MED20","MED21")))),
-        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019", "TP6020","TP6021")))),
-        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120","D121")))),
-        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920","D921")))),
+        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19", "MED20", "MED21")))),
+        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019", "TP6020", "TP6021")))),
+        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120", "D121")))),
+        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920", "D921")))),
         year
       )
-
   } else if (year == 2018) {
-
     out <- vroom(
       file,
       delim = ";",
@@ -192,7 +210,8 @@ load_poverty <- function(file) {
         "DISP_TP6018",
         "DISP_D118",
         "DISP_D918"
-      ))
+      )),
+      show_col_types = FALSE
     ) |>
       transmute(
         IRIS,
@@ -202,24 +221,18 @@ load_poverty <- function(file) {
         D9   = DISP_D918,
         year
       )
-
   }
- 
 
-  
   out |>
     mutate(across(
-  any_of(c("MED", "TP60", "D1", "D9")),
-  ~ suppressWarnings(as.numeric(gsub(",", ".", .x)))
-))
+      any_of(c("MED", "TP60", "D1", "D9")),
+      ~ suppressWarnings(as.numeric(gsub(",", ".", .x)))
+    ))
 }
 
-poverty <- bind_rows(
-  lapply(poverty_files, load_poverty)
-)
+poverty <- bind_rows(lapply(poverty_files, load_poverty))
 
-## Aggregate 2018 IRIS Data to City Level
-
+# Aggregate 2018 IRIS Data to City Level
 poverty_2018 <- poverty |>
   filter(year == 2018) |>
   left_join(pop2018_IRIS, by = "IRIS") |>
@@ -264,6 +277,10 @@ The total number of crimes per year per city is computed by doing the
 sum of each type of crimes.
 
 ```{r}
+#| label: load-crime
+#| message: false
+#| warning: false
+
 crime <- vroom(
   here("data_criminality.csv"),
   delim = ";",
@@ -273,7 +290,8 @@ crime <- vroom(
     annee = col_integer(),
     nombre = col_integer(),
     insee_pop = col_integer()
-  )
+  ),
+  show_col_types = FALSE
 ) |>
   filter(!indicateur %in% c("Usage de stupéfiants (AFD)", "Violences sexuelles")) |>
   pivot_wider(
@@ -299,26 +317,32 @@ have the information of the real estate price in at least one year.
 We also compute the crime rate.
 
 ```{r}
+#| label: create-final-dataset
+#| message: false
+#| warning: false
+
 city_names <- vroom(
   here("data", "poverty", "pov2016.csv"),
   delim = ";",
-  col_select = c(CODGEO, LIBGEO)
+  col_select = c(CODGEO, LIBGEO),
+  show_col_types = FALSE
 ) |>
   distinct()
 
 data_final <- poverty |>
   left_join(crime, by = c("CODGEO", "year")) |>
-  left_join(ppsm, by = c("CODGEO", "year"))|>
-  select(-IRIS)|>
-  left_join(city_names, by = "CODGEO")|>
+  left_join(ppsm, by = c("CODGEO", "year")) |>
+  select(-IRIS) |>
+  left_join(city_names, by = "CODGEO") |>
   distinct(CODGEO, year, .keep_all = TRUE) |>
   group_by(CODGEO) |>
-  filter(!is.na(Prixm2Moyen))|>
   filter(n_distinct(year) == 6) |>
   ungroup() |>
   mutate(
-    crime_rate = (total_crimes/insee_pop)*100
-  )
+    crime_rate = (total_crimes / insee_pop) * 100
+  ) |>
+   filter(!is.na(crime_rate), !is.na(Prixm2Moyen)) |>
+  filter (insee_pop >= 5000)
 ```
 
 We obtained a clean dataset for 897 cities between 2016 and 2021.
@@ -338,48 +362,61 @@ per square meter).Then we merged them into an only dataset that combines
 all the data per cities per years.
 
 ```{r}
+#| label: summary-table
+#| echo: false
+
 descriptions <- c(
-  "Unique code that corresponds to one city. The first two numbers correspond to a department",
-  "Median income ",
-  "Poverty rate (set at less than 60% of the median income)",
-  "1st income decile",
-  "9th income decile",
-  "Corresponding year",
-  "The city's population",
-  "Number of domestic physical violences reported",
-  "Number of non domestic physical violences reported",
-  "Number of armed robberies reported",
-  "Number of non armed violent robberies reported",
-  "Number of non violent robberies against persons reported",
-  "Number of home invasions reported",
-  "Number of vehicle thefts reported",
-  "Number of thefts from vehicles reported",
-  "Number of thefts of vehicle accessories reported",
-  "Number of willful damages and vandalism reported",
-  "Number of drug uses reported",
-  "Number of drug dealing cases reported for the year",
-  "Number of frauds and payment method frauds reported for the year",
-  "Total number of crimes reported for this year",
-  "Price per square meter of the real estate goods sold for the year", 
-  "The city's name",
-  "Crime rate per 100 inhabitants"
+
+"Unique city code (first 2 digits = department)",
+"Median income",
+"Poverty rate (< 60% of median income)",
+"1st income decile",
+"9th income decile",
+"Year",
+"City population",
+"Domestic physical violence",
+"Non-domestic physical violence",
+"Armed robberies",
+"Violent robberies (no weapon)",
+"Non-violent robberies",
+"Home invasions",
+"Vehicle thefts",
+"Thefts from vehicles",
+"Thefts of vehicle accessories",
+"Vandalism",
+"Drug use",
+"Drug dealing",
+"Fraud",
+"Total crimes",
+"Price per m²",
+"City name",
+"Crime rate per 100 inhabitants"
 )
 
-summary <- data.table(
+summary_table <- data.table(
   Variable = names(data_final),
-  Type = sapply(data_final, class),
+  Type = sapply(data_final, function(x) class(x)[1]),
   Description = descriptions
 )
 
-knitr::kable(summary)
+knitr::kable(summary_table, caption = "Variables in the final dataset")
+```
+
+```{r}
+#| label: dataset-info
+#| echo: false
 
 dataset_info <- data.table(
-  Info = c("Number of rows", "Number of columns"),
-  Value = c(nrow(data_final), ncol(data_final)) 
+  Metric = c("Number of observations", "Number of variables", "Number of cities", "Time period"),
+  Value = c(
+    format(nrow(data_final), big.mark = ","),
+    ncol(data_final),
+    n_distinct(data_final$CODGEO),
+    paste(min(data_final$year), "-", max(data_final$year))
+  )
 )
 
-knitr::kable(dataset_info)
-
+knitr::kable(dataset_info, caption = "Dataset overview")
 ```
 
 # Research question :
@@ -400,36 +437,54 @@ If yes, do we observe a spatial displacement of crime to non-gentrifying
 areas?
 
 ```{r}
-# =============================================================================
-# SAVE CLEANED DATASETS
-# =============================================================================
 
-# Create output folder if it doesn't exist
+#| label: filter-and-save-datasets
+#| echo: false
+#| message: false
+#| warning: false
+
+# Get the exact CODGEO-year combinations from data_final
+valid_keys <- data_final |> 
+  select(CODGEO, year) |>
+  distinct()
+
+# Get unique cities for city_names
+valid_codgeo <- unique(valid_keys$CODGEO)
+
+# Filter all datasets to match data_final exactly
+poverty_clean <- poverty |>
+  semi_join(valid_keys, by = c("CODGEO", "year")) |>
+  distinct(CODGEO, year, .keep_all = TRUE)
+
+crime_clean <- crime |>
+  semi_join(valid_keys, by = c("CODGEO", "year")) |>
+  distinct(CODGEO, year, .keep_all = TRUE)
+
+ppsm_clean <- ppsm |>
+  semi_join(valid_keys, by = c("CODGEO", "year")) |>
+  distinct(CODGEO, year, .keep_all = TRUE)
+
+city_names_clean <- city_names |>
+  filter(CODGEO %in% valid_codgeo) |>
+  distinct(CODGEO, .keep_all = TRUE)
+
+# Verify all have same number of rows
+cat("Verification:\n")
+cat("  - data_final:", nrow(data_final), "rows\n")
+cat("  - poverty:", nrow(poverty_clean), "rows\n")
+cat("  - crime:", nrow(crime_clean), "rows\n")
+cat("  - ppsm:", nrow(ppsm_clean), "rows\n")
+cat("  - city_names:", nrow(city_names_clean), "cities\n")
+
+# Create output folder
 if (!dir.exists(here("data", "cleaned"))) {
- dir.create(here("data", "cleaned"), recursive = TRUE)
+  dir.create(here("data", "cleaned"), recursive = TRUE)
 }
 
-# Save main dataset
+# Save all filtered datasets
 saveRDS(data_final, here("data", "cleaned", "data_final.rds"))
-
-# Save city names lookup
-saveRDS(city_names, here("data", "cleaned", "city_names.rds"))
-
-# Save poverty data (in case you need it separately)
-saveRDS(poverty, here("data", "cleaned", "poverty.rds"))
-
-# Save crime data (in case you need it separately)
-saveRDS(crime, here("data", "cleaned", "crime.rds"))
-
-# Save price per square meter data
-saveRDS(ppsm, here("data", "cleaned", "ppsm.rds"))
-
-cat("✓ All datasets saved to:", here("data", "cleaned"), "\n")
-cat("  - data_final.rds:", nrow(data_final), "rows\n")
-cat("  - city_names.rds:", nrow(city_names), "rows\n")
-cat("  - poverty.rds:", nrow(poverty), "rows\n")
-cat("  - crime.rds:", nrow(crime), "rows\n")
-cat("  - ppsm.rds:", nrow(ppsm), "rows\n")
+saveRDS(city_names_clean, here("data", "cleaned", "city_names.rds"))
+saveRDS(poverty_clean, here("data", "cleaned", "poverty.rds"))
+saveRDS(crime_clean, here("data", "cleaned", "crime.rds"))
+saveRDS(ppsm_clean, here("data", "cleaned", "ppsm.rds"))
 ```
-
-

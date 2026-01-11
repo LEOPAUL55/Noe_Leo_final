@@ -35,16 +35,26 @@ library(mgcv)
 library(viridis)
 library(FSA)
 
-# =============================================================================
-# LOAD CLEANED DATASETS
-# =============================================================================
-
-data_final <- readRDS(here("data", "cleaned", "data_final.rds"))
+# Load pre-filtered datasets
+poverty <- readRDS(here("data", "cleaned", "poverty.rds"))
+crime <- readRDS(here("data", "cleaned", "crime.rds"))
+ppsm <- readRDS(here("data", "cleaned", "ppsm.rds"))
 city_names <- readRDS(here("data", "cleaned", "city_names.rds"))
 
+# Recreate data_final
+data_final <- poverty |>
+  left_join(crime, by = c("CODGEO", "year")) |>
+  left_join(ppsm, by = c("CODGEO", "year")) |>
+  left_join(city_names, by = "CODGEO") |>
+  mutate(
+    crime_rate = (total_crimes / insee_pop) * 100
+  )
+
+# Verify
 cat("✓ Data loaded successfully\n")
-cat("  - data_final:", n_distinct(data_final$CODGEO), "cities,", 
-    n_distinct(data_final$year), "years\n")
+cat("  - Cities:", n_distinct(data_final$CODGEO), "\n")
+cat("  - Years:", n_distinct(data_final$year), "\n")
+cat("  - Observations:", nrow(data_final), "\n")
 ```
 
 The first step of the project is to ensure the reliability of our findings by selecting adequate and accurate data. We need to create two data sets, with respectively a "level" and an "evolution" data set. The "evolution" one will be created thanks to the "level" one. To implement the method of study, essential informations are needed for describing the economic and criminality situation in every cities on the period. More precisely, the build of the gentrification index is based on economic informations such as the the real estate price market (square meter price), the median income, the poverty rate (defined as 60% of the median income) as well as the first and ninth deciles, for each city per year. For the criminality, the study rely on the number of committed crimes for each city per year and type. Thanks to the informations about the level of population, it is possible to compute the crime rate, global and per type.
