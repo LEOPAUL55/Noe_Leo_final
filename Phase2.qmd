@@ -399,4 +399,37 @@ declination in terms of delinquency between the top 20% and the others?
 If yes, do we observe a spatial displacement of crime to non-gentrifying
 areas?
 
+```{r}
+# =============================================================================
+# SAVE CLEANED DATASETS
+# =============================================================================
+
+# Create output folder if it doesn't exist
+if (!dir.exists(here("data", "cleaned"))) {
+ dir.create(here("data", "cleaned"), recursive = TRUE)
+}
+
+# Save main dataset
+saveRDS(data_final, here("data", "cleaned", "data_final.rds"))
+
+# Save city names lookup
+saveRDS(city_names, here("data", "cleaned", "city_names.rds"))
+
+# Save poverty data (in case you need it separately)
+saveRDS(poverty, here("data", "cleaned", "poverty.rds"))
+
+# Save crime data (in case you need it separately)
+saveRDS(crime, here("data", "cleaned", "crime.rds"))
+
+# Save price per square meter data
+saveRDS(ppsm, here("data", "cleaned", "ppsm.rds"))
+
+cat("✓ All datasets saved to:", here("data", "cleaned"), "\n")
+cat("  - data_final.rds:", nrow(data_final), "rows\n")
+cat("  - city_names.rds:", nrow(city_names), "rows\n")
+cat("  - poverty.rds:", nrow(poverty), "rows\n")
+cat("  - crime.rds:", nrow(crime), "rows\n")
+cat("  - ppsm.rds:", nrow(ppsm), "rows\n")
+```
+
 

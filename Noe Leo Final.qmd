@@ -9,6 +9,7 @@ editor:
 
 Github project : https://github.com/LEOPAUL55/Noe_Leo_final.git
 
+
 ```{r}
 #| message: false
 here::i_am("Noe_Leo_Final.Rproj")
@@ -18,8 +19,23 @@ library(tidyr)
 library(ggplot2)
 library(vroom)
 library(data.table)
-library(readr)
 library(stringr)
+library(plm)
+library(psych)
+library(mgcv)
+library(viridis)
+library(FSA)
+
+# =============================================================================
+# LOAD CLEANED DATASETS
+# =============================================================================
+
+data_final <- readRDS(here("data", "cleaned", "data_final.rds"))
+city_names <- readRDS(here("data", "cleaned", "city_names.rds"))
+
+cat("✓ Data loaded successfully\n")
+cat("  - data_final:", n_distinct(data_final$CODGEO), "cities,", 
+    n_distinct(data_final$year), "years\n")
 ```
 
 # Data Loading and Cleaning
