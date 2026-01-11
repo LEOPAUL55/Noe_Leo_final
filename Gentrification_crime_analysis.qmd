@@ -129,9 +129,13 @@ Gentrification is not about the level of the variables, but their variation. Thu
 
 + talk about initial wealth level, suppress or equal to 0?
 
-## b. Descriptive statistics
+## b. Descriptive statistics: visual exploration of the data
 
-```{r, echo=FALSE}
+### Gentrification in France, where?
+
+To determine what cities are the most affected by gentrification, we compute the global variation of the economic data between 2016 and 2021. Applying the gentrification index to these data, it is showed in the following table that the most gentrified cities are mainly located in the neighborhoods of the big urban areas, especially Paris (Clichy, Romainville, Saint-Ouen-sur-Seine...). Cities like Clichy or Saint-Ouen-sur-Seine are famous to have been rehabilitate during the last years, that leds to an important gentrification. This is validated by the index.
+
+```{r, echo=FALSE, message=FALSE}
 ppsm_var <- ppsm |>
   filter(year %in% c(2016, 2021)) |>
   group_by(CODGEO, LIBGEO) |>
@@ -156,7 +160,7 @@ MED2016 <- poverty |>
   select(CODGEO, MED) 
 
 POP2016 <- crime |>
-  filter (year == 2021) |>
+  filter (year == 2016) |>
   select(CODGEO, insee_pop)
 
 gentrification_1 <- ppsm_var |>
@@ -206,7 +210,9 @@ gentrification_13 <- ppsm_var |>
   ) |>
   arrange(desc(gentrification_index))
 ```
-```{r, echo=FALSE}
+Moreover, the data also show how gentrification is an urban process. The following graphic represents the average degree of gentrification computed by the index, in function of the side of the population in 2016. It does not show a clear positive relation between both variables, given that the biggest cities have a low index, such as Toulouse, Nice or Montpellier. Nevertheless, it shows how the gentrification is negative and less intense in the smallest cities (less than 50 000 inhabitants). It validates the correlation between size of the town and degree of gentrification, at least for the small ones. 
+
+```{r, echo=FALSE, warning=FALSE}
 gentrification_binned <- gentrification_12 |>
   mutate(
     pop_bin = cut(
@@ -225,15 +231,28 @@ gentrification_binned <- gentrification_12 |>
     .groups = "drop"
   )
 
+gentrification_binned <- gentrification_binned %>%
+  mutate(
+    # Extract lower and upper bounds as numbers
+    lower = as.numeric(str_extract(pop_bin, "(?<=\\[)[0-9.e+\\-]+")),
+    upper = as.numeric(str_extract(pop_bin, "(?<=,)[0-9.e+\\-]+(?=\\))")),
+    pop_bin_mid = (lower + upper) / 2
+  )
+
 ggplot(gentrification_binned,
-       aes(x = pop_bin, y = mean_gentrification)) +
-  geom_col(fill = "steelblue") +
+       aes(x = pop_bin_mid, y = mean_gentrification)) +
+  geom_line(color = "steelblue", size = 1.2) +
+  geom_point(color = "steelblue", size = 3) +
+  scale_x_continuous(
+    breaks = scales::pretty_breaks(n = 10),
+    labels = scales::label_number(big.mark = " ", decimal.mark = ",")
+  ) +
   labs(
     x = "Population (bins of 10,000 inhabitants)",
     y = "Average gentrification index",
     title = "Average gentrification by population size"
   ) +
-  theme_minimal() +
+  theme_minimal(base_size = 14) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
@@ -261,6 +280,141 @@ ggplot(gentrification_1_group, aes(x = gent_category)) +
   ) +
   theme_minimal()
 ```
+```{r, echo=FALSE}
+ggplot(gentrification_1, aes(x = gentrification_index)) +
+  geom_histogram(
+    bins = 30,
+    fill = "steelblue",
+    color = "white"
+  ) +
+  labs(
+    x = "Gentrification index",
+    y = "Number of municipalities",
+    title = "Distribution of the gentrification index"
+  ) +
+  theme_minimal()
+```
+
+
+```{r, echo=FALSE, warning=FALSE}
+crime_wide <- crime |>
+  mutate(
+    violent_total = rowSums(
+      across(c(`Violences physiques intrafamiliales`,
+               `Violences physiques hors cadre familial`,
+               `Vols avec armes`,
+               `Vols violents sans arme`)),
+      na.rm = TRUE
+    ),
+    nonviolent_total = rowSums(
+      across(c(`Vols sans violence contre des personnes`,
+               `Vols de véhicule`,
+               `Vols dans les véhicules`,
+               `Vols d'accessoires sur véhicules`,
+               `Cambriolages de logement`,
+               `Destructions et dégradations volontaires`,
+               `Escroqueries et fraudes aux moyens de paiement`,
+               `Usage de stupéfiants`,
+               `Trafic de stupéfiants`)),
+      na.rm = TRUE
+    ),
+    total_excl_sexual = total_crimes - `Violences sexuelles`,
+    violent_rate = (violent_total / insee_pop) * 100,
+    nonviolent_rate = (nonviolent_total / insee_pop) * 100,
+    total_rate_excl = (total_excl_sexual / insee_pop) * 100
+  ) |>
+  group_by(year) |>
+  summarise(
+    total = median(total_rate_excl, na.rm = TRUE),
+    violent = median(violent_rate, na.rm = TRUE),
+    nonviolent = median(nonviolent_rate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Scale factor for secondary axis
+scale_factor <- max(crime_wide$nonviolent) / max(crime_wide$violent)
+
+ggplot(crime_wide, aes(x = year)) +
+  geom_line(aes(y = nonviolent, color = "Non-Violent"), linewidth = 1.5) +
+  geom_point(aes(y = nonviolent, color = "Non-Violent"), linewidth = 4) +
+  geom_line(aes(y = total, color = "Total"), linewidth = 1.5) +
+  geom_point(aes(y = total, color = "Total"), linewidth = 4) +
+  geom_line(aes(y = violent * scale_factor, color = "Violent"), linewidth = 1.5) +
+  geom_point(aes(y = violent * scale_factor, color = "Violent"), linewidth = 4) +
+  scale_y_continuous(
+    name = "Non-Violent & Total (per 100 inh.)",
+    sec.axis = sec_axis(~./scale_factor, name = "Violent Crime (per 100 inh.)")
+  ) +
+  scale_x_continuous(breaks = 2016:2021) +
+  scale_color_manual(values = c("Total" = "#2c3e50", 
+                                "Violent" = "#e74c3c", 
+                                "Non-Violent" = "#3498db")) +
+  labs(
+    x = "Year",
+    color = NULL,
+    title = "Crime Rate Evolution in French Cities (2016-2021)",
+    subtitle = "Note: Violent crime uses secondary axis (right) | Excluding sexual violence"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "bottom",
+    axis.title.y.right = element_text(color = "#e74c3c"),
+    axis.text.y.right = element_text(color = "#e74c3c")
+  )
+```
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Restructuring data to have 2016 and 2021 side by side for comparison
+crime_rate_change_continuous <- crime |>
+  filter(year %in% c(2016, 2021)) |>
+  select(CODGEO, year, total_crimes, insee_pop) |>
+  pivot_wider(
+    names_from = year,
+    values_from = c(total_crimes, insee_pop),
+    names_sep = "_"
+  ) |>
+  mutate(
+    # Calculating crime rates per capita for both years
+    crime_rate_2016 = total_crimes_2016 / insee_pop_2016,
+    crime_rate_2021 = total_crimes_2021 / insee_pop_2021,
+    # Computing percentage change in crime rate over the 5-year period
+    crime_rate_change = (crime_rate_2021 - crime_rate_2016) / crime_rate_2016
+  )|>
+  
+  # Merging datasets : combining crime data with gentrification categories - each area has now its crime change and gentrification level 
+  
+  left_join(
+    gentrification_12 |> select(CODGEO, gentrification_index),
+    by = "CODGEO"
+  ) 
+
+model <- lm(crime_rate_change ~ gentrification_index,
+            data = crime_rate_change_continuous)
+
+slope <- coef(model)["gentrification_index"]
+
+ggplot(crime_rate_change_continuous,
+       aes(x = gentrification_index, y = crime_rate_change)) +
+  geom_point(aes(color = gentrification_index), alpha = 0.6) +
+  geom_smooth(method = "lm", se = TRUE, color = "black") +
+  annotate(
+    "text",
+    x = Inf, y = Inf,
+    label = paste0("Slope = ", round(slope, 3)),
+    hjust = 1.1, vjust = 1.5
+  ) +
+  scale_color_viridis_c() +
+  labs(
+    x = "Gentrification Index (standardized)",
+    y = "Crime Rate Change (2016-2021)",
+    title = "Small Link Between Gentrification and Crime Changes",
+    subtitle = "Analysis of initially lower-income areas (bottom 60% baseline income)",
+    caption = "Each point represents one geographic area | Red line shows linear trend"
+  ) +
+  theme_minimal()
+```
+
+
 
 ## References
 
