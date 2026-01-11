@@ -708,8 +708,9 @@ valid and reliable, and that all indicators contribute meaningfully
 
 ## Checking for correlations with crime
 
-Creating gentrification categories :
+Let's compare between 3 arbitrary gentrification categories among the "gentrifiable" cities : Low gentrification (bottom 25% of the index), medium gentrification (middle 50% of the index) and high gentrification (top 25% of the index) :
 
+Creating gentrification categories :
 ```{r}
 evolution_std_A_groups <- evolution_std_A |>
   mutate(
@@ -724,11 +725,7 @@ evolution_std_A_groups <- evolution_std_A |>
 table(evolution_std_A_groups$gent_category)
 ```
 
-Low = bottom 25% gentrified cities Medium = middle 50% gentrified cities
-high = top 25% gentrified cities (among the "gentrifiable" cities)
-
 Calculating crime rate changes
-
 ```{r}
 #Restructuring data to have 2016 and 2021 side by side for comparison
 crime_rate_change_continuous <- data_final |>
@@ -789,7 +786,7 @@ ggplot(crime_rate_change_continuous,
     legend.position = "right"
   )
 ```
--> Visually, it seems to exist a slight correlation between gentrification intensity and crime rate change between 2016 and 2021 among gentrifiable cities
+-> Visually, it seems to exist a slight correlation between gentrification intensity and crime rate change between 2016 and 2021 among gentrifiable cities : less gentrified cities tend to experiment more crime rate reduction than more gentrified cities
 
 Plotting the crime rate change among three arbitrary gentrification levels :
 
@@ -833,10 +830,9 @@ ggplot(ci_stats |> filter(gent_category %in% c("Low", "High", "Medium")),
     panel.grid.minor = element_blank()
   )
 ```
--> There is a diminution in crime rate between all three gentrification levels
+-> There is a diminution in crime rate between all three gentrification levels, with a higher diminution for the low category and a lower diminution for the highly gentrified category
 
-Crime change by type and gentrification intensity
-
+Crime change by type and gentrification intensity : 
 ```{r}
 
 # Reshaping crime data per type
@@ -909,9 +905,10 @@ ggplot(crime_change_type_summary,
   ) +
   theme_minimal()
 ```
+We can see the that the crime rate changes in the same direction among the gentrifiable cities for all type of crimes, but with very heterogeneous intensity depending the gentrification intensity for some type of crimes (violences physiques intrafamiliales, vols avec armes, cambriolages de logements...)
 
-Creating crime categories (excluding sexual violences) :
 
+What if we split crimes into 2 distinct categories : Violent vs Non Violent crimes ?
 ```{r}
 
 # Creating crime categories 
@@ -980,13 +977,12 @@ knitr::kable(
 )
 ```
 
--\> while non violent crimes rate decreases and violent crime rate
-increases for all groups, violent crimes increases less as
-gentrification intensifies while non violent crimes diminish roughly the same way for all groups
+-> Very interesting results : cities that had a higher gentrification also witnessed a lower violent crime rate increase and a lower non violent crimes increase.
+
 
 Let's check if the changes are significant :
 
-
+Tests whether crime rate changes differ significantly across the three gentrification levels :
 ```{r}
 # Tests whether crime rate changes differ significantly across the three gentrification levels
 
@@ -1001,8 +997,9 @@ cor.test(
 )
 ```
 
--\> nothing is significant
+-> There is NO significant difference in total crime rate changes between the three gentrification categories (low,medium high), and there is NO significant linear relationship between the intensity of gentrification and changes in crime rates
 
+What if we're checking for significativity among violent crimes between gentrification categories only ?
 ```{r}
 # Checking only for violent crimes
 
@@ -1013,12 +1010,12 @@ violent_data <- crime_change_type_cat |>
 
 summary(aov(median_change ~ gent_category, data = violent_data))
 ```
+-> There ARE statistically significant differences in violent crime rate changes between cities with different gentrification levels
 
--\> not significant
+
 
 Plotting violent crime growth among gentrification intensities
 categories :
-
 ```{r}
 # Get the medians for the plot
 violent_summary <- violent_data |>
@@ -1049,7 +1046,6 @@ ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_ca
 ```
 
 Overall test: Are there differences between groups?
-
 ```{r}
 library(ggsignif)
 
@@ -1084,33 +1080,10 @@ print(paste("Effect size (ε²):", round(epsilon_squared, 3)))
 # 0.06 ≤ ε² < 0.14: Medium effect  
 # ε² ≥ 0.14: Large effect
 
-# After running pairwise tests, add significance stars
-# Example if High vs Low is significant:
-ggplot(violent_summary, aes(x = gent_category, y = median_change, fill = gent_category)) +
-  geom_col(alpha = 0.8) +
-  geom_errorbar(aes(ymin = q25, ymax = q75), width = 0.2, size = 0.8) +
-  
-  # Add significance annotation (adjust based on your pairwise results)
-  geom_signif(
-    comparisons = list(c("Low", "High")),
-    annotations = "*",
-    y_position = max(violent_summary$q75) * 1.1,
-    tip_length = 0.01
-  ) +
-  
-  scale_fill_manual(values = c("Low" = "steelblue", "Medium" = "orange", "High" = "red")) +
-  labs(
-    x = "Gentrification Intensity",
-    y = "Median Violent Crime Change",
-    subtitle = "Kruskal-Wallis: χ²(2) = 6.97, p = 0.031*",
-    caption = "*Significant at p < 0.05 level"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
 
 ```
+-> There ARE significant differences between groups
 
--\> There is a significant difference between high group and low group
 
 Pairwise wilcox test :
 
@@ -1124,8 +1097,8 @@ y_max <- max(violent_summary$median_change + violent_summary$q75, na.rm = TRUE)
 
   
 ```
+-> Similar results
 
--\> significant for High-Low
 
 # Building a non binary gentrification index (year to year)
 
@@ -1191,7 +1164,7 @@ model <- plm(crime_change ~ lag(gent_index),
              effect = "twoways") # Both area and year FE
 summary(model)
 ```
--> not significant at all
+-> Cities that experienced more gentrification in one year tended to have slightly smaller increases (or larger decreases) in crime the following year (very small effect)
 
 Testing wether last year's gentrification predicts this year's violent crime change
 ```{r}
@@ -1251,8 +1224,16 @@ model <- lm(violent_change ~ gent_index_lag1, data = violent_for_analysis)
 summary(model)
 
 ```
--> not significant
+-> A linear regression revealed that last year's gentrification significantly 
+predicts reductions in violent crime growth this year (β = -0.038, p < 0.0001). 
+The effect is 2.6 times larger for violent crimes than for total crimes, 
+and gentrification explains approximately 1% of the variance in violent crime 
+changes—substantially more than its explanatory power for overall crime
 
+Cities that gentrified more in one year experienced significantly smaller increases (or larger decreases) in violent crimes the following year. This effect is 2.6 times stronger for violent crimes than for crimes overall
+
+
+Diving into violent crimes :
 Testing multiplte lags :
 ```{r}
 # Creating multiple lags
@@ -1291,7 +1272,32 @@ print(paste("Correlation:", round(cor_lag3$estimate, 4)))
 print(paste("P-value:", round(cor_lag3$p.value, 4)))
 print(paste("N:", nrow(lag3_data)))
 ```
--> Lag 2 is significant, not the others
+```{r}
+# Check for mean reversion
+violent_with_lags |>
+  filter(!is.na(violent_change)) |>
+  group_by(CODGEO) |>
+  mutate(
+    violent_change_lag1 = dplyr::lag(violent_change, 1),
+    violent_change_lag2 = dplyr::lag(violent_change, 2)
+  ) |>
+  summarise(
+    autocorr = cor(violent_change, violent_change_lag1, use = "complete.obs"),
+    mean_reversion = cor(violent_change, violent_change_lag2, use = "complete.obs")
+  ) |>
+  summarise(
+    mean_autocorr = mean(autocorr, na.rm = TRUE),
+    mean_reversion = mean(mean_reversion, na.rm = TRUE)
+  )
+
+# Test different functional forms
+library(mgcv)
+model_nonlinear <- gam(violent_change ~ s(gent_index_lag1) + s(gent_index_lag2),
+                       data = violent_with_lags)
+summary(model_nonlinear)
+plot(model_nonlinear)
+```
+Violent crime exhibits strong negative autocorrelation (r = -0.43), suggesting natural oscillations. A Generalized Additive Model reveals non-linear effects: gentrification initially reduces violent crime with diminishing returns (p = 0.027), but predicts increased crime two years later (p < 0.001). The Year 2 positive association may reflect both genuine delayed effects and statistical mean reversion from the initial crime drop
 
 Comparing wether gentrification affects violent vs non violent crime differently :
 ```{r}
@@ -1428,6 +1434,7 @@ comparison <- data.frame(
 knitr::kable(comparison, digits = 3, 
              col.names = c("Crime Type", "Lag", "Correlation", "Significant (p<0.05)"))
 ```
+Our analysis reveals divergent temporal patterns: gentrification immediately reduces violent crime (r = -0.102) but increases non-violent crime (r = +0.141). By the second year, these relationships reverse, with violent crime rebounding (r = +0.143) while non-violent crime declines (r = -0.090). This suggests gentrification affects different crime types through distinct mechanisms—perhaps immediately deterring interpersonal violence through increased policing while initially creating new targets for property crime.
 
 Testing the effects of lag gentrification by crime type (non violents)
 ```{r}
@@ -1503,7 +1510,7 @@ ggplot(crime_results, aes(x = reorder(crime_type, correlation), y = correlation,
   ) +
   theme_minimal()
 ```
--> Gentrification has a significant positive effect on vols sans violence contre des personnes, destructions et dégradations volontaires, vols de véhicule, violences physique hors cadre familial and a significant negative effect on usage de stupéfiants (AFD).
+-> Gentrification has only negative significant effects on "Vols sans violence contre des personnes", "Destructions et dégradations volontaires", "vols dans les véhicules", "violences physiques hors cadre familial", "vols violents sans armes", "cambriolages de logement", "vols d'accessoires sur véhicules", "escroqueries et fraudes aux moyens de paiement"
 
 
 
@@ -1538,7 +1545,7 @@ interaction_model <- lm(violent_change ~ gent_index_lag1 * income_group,
                         data = interaction_data)
 summary(interaction_model)
 ```
--> Gentrification reduces violent crime in initially low-income areas, but slightly increases it in higher-income areas. The effect of gentrification on crime depends on the neighborhood's initial economic status
+-> There is NO statistically significant difference in how gentrification affects violent crime across income groups.
 
 
 But maybe the causality is in the other direction ? does gentrification cause violent crime change or does violent crime causes gentrification ? Let's use Granger Causality
@@ -1584,7 +1591,11 @@ summary(model_gent_causes_crime)
 print("=== Does Crime Cause Gentrification? ===")
 summary(model_crime_causes_gent)
 ```
--> Crime changes predict gentrification! Areas that become safer attract more gentrification the following year. This suggests a reverse causality or feedback loop - it's not just that gentrification affects crime, but crime levels also influence where gentrification occurs.
+-> Granger causality tests reveal bidirectional relationships: gentrification 
+significantly reduces subsequent violent crime (β = -0.036, p < 0.001), while 
+violent crime reductions also predict increased gentrification (β = -0.137, 
+p = 0.041). This suggests a self-reinforcing cycle where safer neighborhoods 
+attract investment that further reduces crime.
 
 Visualization 1: Interaction effect
 ```{r}
@@ -1653,7 +1664,118 @@ spatial_model <- lm(violent_change ~ gent_index_lag1 + neighbor_gent_lag1,
                     data = spatial_data)
 summary(spatial_model)
 ```
--> When surrounding cities gentrify (in this example, cities of the same département), local violent crime increases locally 
+
+```{r}
+# First, create total crime change variable
+total_crime_panel <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>
+  arrange(CODGEO, year) |>
+  mutate(
+    total_crime_rate = total_crimes / insee_pop
+  ) |>
+  left_join(
+    gent_yearly |> select(CODGEO, year, gent_index),
+    by = c("CODGEO", "year")
+  ) |>
+  group_by(CODGEO) |>
+  mutate(
+    total_crime_change = log(total_crime_rate + 0.0001) - 
+                         log(dplyr::lag(total_crime_rate) + 0.0001),
+    gent_index_lag1 = dplyr::lag(gent_index, 1)
+  ) |>
+  ungroup()
+
+# Now run the same spatial analysis for total crimes
+spatial_total <- total_crime_panel |>
+  mutate(department = substr(CODGEO, 1, 2)) |>
+  group_by(department, year) |>
+  mutate(
+    n_in_dept = n(),
+    sum_gent_dept = sum(gent_index, na.rm = TRUE),
+    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1)
+  ) |>
+  ungroup() |>
+  group_by(CODGEO) |>
+  mutate(neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1)) |>
+  ungroup() |>
+  filter(!is.na(total_crime_change) & !is.na(neighbor_gent_lag1))
+
+# Correlation
+cor_total_neighbor <- cor.test(spatial_total$neighbor_gent_lag1, 
+                               spatial_total$total_crime_change)
+print("=== TOTAL CRIMES: Neighboring Gentrification Effect ===")
+print(paste("Correlation:", round(cor_total_neighbor$estimate, 4)))
+print(paste("P-value:", round(cor_total_neighbor$p.value, 4)))
+
+# Combined model
+spatial_model_total <- lm(total_crime_change ~ gent_index_lag1 + neighbor_gent_lag1, 
+                          data = spatial_total)
+summary(spatial_model_total)
+```
+```{r}
+# First calculate non-violent crimes
+nonviolent_panel <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>
+  arrange(CODGEO, year) |>
+  mutate(
+    nonviolent_total = rowSums(
+      across(c(
+        `Vols sans violence contre des personnes`,
+        `Vols de véhicule`,
+        `Vols dans les véhicules`,
+        `Vols d'accessoires sur véhicules`,
+        `Cambriolages de logement`,
+        `Destructions et dégradations volontaires`,
+        `Escroqueries et fraudes aux moyens de paiement`,
+        `Usage de stupéfiants`,
+        `Trafic de stupéfiants`
+      )),
+      na.rm = TRUE
+    ),
+    nonviolent_rate = nonviolent_total / insee_pop
+  ) |>
+  left_join(
+    gent_yearly |> select(CODGEO, year, gent_index),
+    by = c("CODGEO", "year")
+  ) |>
+  group_by(CODGEO) |>
+  mutate(
+    nonviolent_change = log(nonviolent_rate + 0.0001) - 
+                       log(dplyr::lag(nonviolent_rate) + 0.0001),
+    gent_index_lag1 = dplyr::lag(gent_index, 1)
+  ) |>
+  ungroup()
+
+# Spatial analysis for non-violent crimes
+spatial_nonviolent <- nonviolent_panel |>
+  mutate(department = substr(CODGEO, 1, 2)) |>
+  group_by(department, year) |>
+  mutate(
+    n_in_dept = n(),
+    sum_gent_dept = sum(gent_index, na.rm = TRUE),
+    neighbor_gent = (sum_gent_dept - gent_index) / (n_in_dept - 1)
+  ) |>
+  ungroup() |>
+  group_by(CODGEO) |>
+  mutate(neighbor_gent_lag1 = dplyr::lag(neighbor_gent, 1)) |>
+  ungroup() |>
+  filter(!is.na(nonviolent_change) & !is.na(neighbor_gent_lag1))
+
+# Correlation
+cor_nonviolent_neighbor <- cor.test(spatial_nonviolent$neighbor_gent_lag1, 
+                                    spatial_nonviolent$nonviolent_change)
+print("=== NON-VIOLENT CRIMES: Neighboring Gentrification Effect ===")
+print(paste("Correlation:", round(cor_nonviolent_neighbor$estimate, 4)))
+print(paste("P-value:", round(cor_nonviolent_neighbor$p.value, 4)))
+
+# Combined model
+spatial_model_nonviolent <- lm(nonviolent_change ~ gent_index_lag1 + neighbor_gent_lag1, 
+                               data = spatial_nonviolent)
+summary(spatial_model_nonviolent)
+```
+
+
+-> Spillover effect for total crimes, not violent crimes and violent crimes : Cities surrounded by slowly-gentrifying (or non-gentrifying) neighbors tend to experience MORE crime growth.
 
 Do we observe different effects depending on the size of the city ? (urban/rural comparison based on population)
 ```{r}
@@ -1698,7 +1820,7 @@ ggplot(urban_rural_data, aes(x = gent_index_lag1, y = violent_change, color = ar
   theme_minimal() +
   theme(legend.position = "none")
 ```
-In larger cities there is a significantly positive correlation between the lagged gentrification and violent crime change rate
+In larger and medium cities there is a significantly negative correlation between the lagged gentrification and violent crime change rate
 
 
 
