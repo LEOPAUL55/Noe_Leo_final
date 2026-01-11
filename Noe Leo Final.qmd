@@ -729,7 +729,13 @@ For non-violent crimes, no pairwise comparisons reach statistical significance (
 
 # Panel Analysis
 
+The cross-sectional analysis examined the relationship between gentrification and crime changes over the entire 2016-2021 period. However, this approach cannot capture the temporal dynamics of how gentrification affects crime over time. Does gentrification in one year affect crime the following year? Do effects accumulate or reverse over multiple years?
+
+To address these questions, we construct a year-over-year gentrification index that measures annual changes in gentrification intensity for each city. This allows us to test whether lagged gentrification predicts subsequent crime changes using panel data methods.
+
 ## Year over year gentrification index
+
+Instead of measuring gentrification as the total change from 2016 to 2021, we now compute annual growth rates for each component of the gentrification index. This creates a time-varying measure that captures the intensity of gentrification in each city-year.
 
 ```{r}
 gent_yearly <- data_final |>
@@ -781,11 +787,21 @@ crime_panel <- gent_yearly |>
 
 ```
 
+```{r}
+cat("Panel observations:", nrow(crime_panel), "\n")
+cat("Cities:", n_distinct(crime_panel$CODGEO), "\n")
+cat("Years:", unique(crime_panel$year), "\n")
+summary(crime_panel$gent_index)
+```
+The resulting panel contains 2,688 city-year observations across 538 cities from 2017 to 2021. The gentrification index is centered around zero (mean ≈ 0) with values ranging from -2.29 to +2.20, indicating substantial variation in annual gentrification intensity across cities and years.
+
 
 ## Lagged effects
 
+### On total crimes
 
-Lagged effects on Total crime :
+To test whether gentrification in one year affects crime the following year, we estimate a fixed effects panel model. This approach controls for both time-invariant city characteristics (city fixed effects) and common yearly shocks (year fixed effects).
+
 ```{r}
 library(plm)
 panel_data <- pdata.frame(crime_panel, index = c("CODGEO", "year"))
@@ -795,9 +811,12 @@ model <- plm(crime_change ~ lag(gent_index),
              effect = "twoways") # Both area and year FE
 summary(model)
 ```
--> Cities that experienced more gentrification in one year tended to have slightly smaller increases (or larger decreases) in crime the following year (very small effect)
+The results show a small but statistically significant negative effect (β = -0.015, p = 0.03). Cities that experienced more gentrification in one year tended to have slightly smaller increases (or larger decreases) in total crime the following year. However, the effect size is modest: the model explains only 0.3% of the variance in crime changes (R² = 0.003).
 
-Lagged effects on Violent crime :
+### On violent and non violent crimes
+
+Given that our cross-sectional analysis found significant effects specifically for violent crimes, we now examine whether this pattern holds in the panel setting. We test whether gentrification in year t predicts changes in violent and non-violent crime in year t+1.
+
 ```{r}
 # Creating violent crimes panel
 violent_crimes_panel <- data_final |>
@@ -813,13 +832,10 @@ violent_crimes_panel <- data_final |>
     ),
     violent_rate = violent_total / insee_pop
   ) |>
-  # Joining with gent_yearly
   left_join(
     gent_yearly |> select(CODGEO, year, gent_index),
     by = c("CODGEO", "year")
   ) |>
-  
-  # Calculating changes and lagged gentrification
   group_by(CODGEO) |>
   mutate(
     violent_change = log(violent_rate + 0.001) - log(dplyr::lag(violent_rate) + 0.001),
@@ -827,114 +843,8 @@ violent_crimes_panel <- data_final |>
   ) |>
   ungroup()
 
-# Step 2: Check we have data
-violent_crimes_panel |>
-  summarise(
-    total_rows = n(),
-    violent_change_valid = sum(!is.na(violent_change)),
-    gent_index_valid = sum(!is.na(gent_index)),
-    gent_lag1_valid = sum(!is.na(gent_index_lag1)),
-    both_valid = sum(!is.na(violent_change) & !is.na(gent_index_lag1))
-  )
-
-# Filtering for analysis
-violent_for_analysis <- violent_crimes_panel |>
-  filter(!is.na(violent_change) & !is.na(gent_index_lag1))
-
-print(paste("Rows for analysis:", nrow(violent_for_analysis)))
-
-# Basic analysis
-cor_result <- cor.test(
-  violent_for_analysis$gent_index_lag1,
-  violent_for_analysis$violent_change,
-  use = "complete.obs"
-)
-print(cor_result)
-
-model <- lm(violent_change ~ gent_index_lag1, data = violent_for_analysis)
-summary(model)
-
-```
--> A linear regression revealed that last year's gentrification significantly 
-predicts reductions in violent crime growth this year (β = -0.038, p < 0.0001). 
-The effect is 2.6 times larger for violent crimes than for total crimes, 
-and gentrification explains approximately 1% of the variance in violent crime 
-changes—substantially more than its explanatory power for overall crime
-
-Cities that gentrified more in one year experienced significantly smaller increases (or larger decreases) in violent crimes the following year. This effect is 2.6 times stronger for violent crimes than for crimes overall
-
-
-## Multiple lags analysis on violent crimes
-
-```{r}
-# Creating multiple lags
-violent_with_lags <- violent_crimes_panel |>
-  arrange(CODGEO, year) |>
-  group_by(CODGEO) |>
-  mutate(
-    gent_index_lag1 = dplyr::lag(gent_index, 1),
-    gent_index_lag2 = dplyr::lag(gent_index, 2),
-    gent_index_lag3 = dplyr::lag(gent_index, 3)
-  ) |>
-  ungroup()
-
-# Testing each lag separately
-# Lag 1
-lag1_data <- violent_with_lags |> filter(!is.na(violent_change) & !is.na(gent_index_lag1))
-cor_lag1 <- cor.test(lag1_data$gent_index_lag1, lag1_data$violent_change)
-print("=== LAG 1 (1 year delay) ===")
-print(paste("Correlation:", round(cor_lag1$estimate, 4)))
-print(paste("P-value:", round(cor_lag1$p.value, 4)))
-print(paste("N:", nrow(lag1_data)))
-
-# Lag 2
-lag2_data <- violent_with_lags |> filter(!is.na(violent_change) & !is.na(gent_index_lag2))
-cor_lag2 <- cor.test(lag2_data$gent_index_lag2, lag2_data$violent_change)
-print("=== LAG 2 (2 year delay) ===")
-print(paste("Correlation:", round(cor_lag2$estimate, 4)))
-print(paste("P-value:", round(cor_lag2$p.value, 4)))
-print(paste("N:", nrow(lag2_data)))
-
-# Lag 3
-lag3_data <- violent_with_lags |> filter(!is.na(violent_change) & !is.na(gent_index_lag3))
-cor_lag3 <- cor.test(lag3_data$gent_index_lag3, lag3_data$violent_change)
-print("=== LAG 3 (3 year delay) ===")
-print(paste("Correlation:", round(cor_lag3$estimate, 4)))
-print(paste("P-value:", round(cor_lag3$p.value, 4)))
-print(paste("N:", nrow(lag3_data)))
-```
-## Non-Linear effects (GAM)
-```{r}
-# Check for mean reversion
-violent_with_lags |>
-  filter(!is.na(violent_change)) |>
-  group_by(CODGEO) |>
-  mutate(
-    violent_change_lag1 = dplyr::lag(violent_change, 1),
-    violent_change_lag2 = dplyr::lag(violent_change, 2)
-  ) |>
-  summarise(
-    autocorr = cor(violent_change, violent_change_lag1, use = "complete.obs"),
-    mean_reversion = cor(violent_change, violent_change_lag2, use = "complete.obs")
-  ) |>
-  summarise(
-    mean_autocorr = mean(autocorr, na.rm = TRUE),
-    mean_reversion = mean(mean_reversion, na.rm = TRUE)
-  )
-
-# Test different functional forms
-library(mgcv)
-model_nonlinear <- gam(violent_change ~ s(gent_index_lag1) + s(gent_index_lag2),
-                       data = violent_with_lags)
-summary(model_nonlinear)
-plot(model_nonlinear)
-```
-Violent crime exhibits strong negative autocorrelation (r = -0.43), suggesting natural oscillations. A Generalized Additive Model reveals non-linear effects: gentrification initially reduces violent crime with diminishing returns (p = 0.027), but predicts increased crime two years later (p < 0.001). The Year 2 positive association may reflect both genuine delayed effects and statistical mean reversion from the initial crime drop
-
-## Violent vs Non Violent comparison :
-```{r}
-# Create non-violent crimes panel
-nonviolent_panel <- data_final |>
+# Creating non-violent crimes panel
+nonviolent_crimes_panel <- data_final |>
   filter(CODGEO %in% gentrifiable_areas) |>
   arrange(CODGEO, year) |>
   mutate(
@@ -959,191 +869,232 @@ nonviolent_panel <- data_final |>
   group_by(CODGEO) |>
   mutate(
     nonviolent_change = log(nonviolent_rate + 0.001) - log(dplyr::lag(nonviolent_rate) + 0.001),
-    gent_index_lag1 = dplyr::lag(gent_index, 1),
-    gent_index_lag2 = dplyr::lag(gent_index, 2)
+    gent_index_lag1 = dplyr::lag(gent_index, 1)
   ) |>
   ungroup()
 
-# Test
-nv_lag1 <- nonviolent_panel |> filter(!is.na(nonviolent_change) & !is.na(gent_index_lag1))
-cor_nv1 <- cor.test(nv_lag1$gent_index_lag1, nv_lag1$nonviolent_change)
-print("=== NON-VIOLENT CRIMES - LAG 1 ===")
-print(paste("Correlation:", round(cor_nv1$estimate, 4)))
-print(paste("P-value:", round(cor_nv1$p.value, 4)))
+# Filtering for analysis
+violent_for_analysis <- violent_crimes_panel |>
+  filter(!is.na(violent_change) & !is.na(gent_index_lag1))
 
-nv_lag2 <- nonviolent_panel |> filter(!is.na(nonviolent_change) & !is.na(gent_index_lag2))
-cor_nv2 <- cor.test(nv_lag2$gent_index_lag2, nv_lag2$nonviolent_change)
-print("=== NON-VIOLENT CRIMES - LAG 2 ===")
-print(paste("Correlation:", round(cor_nv2$estimate, 4)))
-print(paste("P-value:", round(cor_nv2$p.value, 4)))
-```
+nonviolent_for_analysis <- nonviolent_crimes_panel |>
+  filter(!is.na(nonviolent_change) & !is.na(gent_index_lag1))
 
-Visualizing all the lag effects of gentrification on violent crime :
-```{r}
-lag_summary <- data.frame(
-  lag = c(1, 2, 3),
-  correlation = c(cor_lag1$estimate, cor_lag2$estimate, cor_lag3$estimate),
-  p_value = c(cor_lag1$p.value, cor_lag2$p.value, cor_lag3$p.value),
-  n = c(nrow(lag1_data), nrow(lag2_data), nrow(lag3_data))
+# Correlation tests
+cor_violent <- cor.test(
+  violent_for_analysis$gent_index_lag1,
+  violent_for_analysis$violent_change,
+  use = "complete.obs"
+)
+
+cor_nonviolent <- cor.test(
+  nonviolent_for_analysis$gent_index_lag1,
+  nonviolent_for_analysis$nonviolent_change,
+  use = "complete.obs"
+)
+
+# Summary table
+tibble(
+  `Crime Type` = c("Violent crimes", "Non-violent crimes"),
+  Correlation = c(cor_violent$estimate, cor_nonviolent$estimate),
+  `P-value` = c(cor_violent$p.value, cor_nonviolent$p.value),
+  N = c(nrow(violent_for_analysis), nrow(nonviolent_for_analysis))
 ) |>
-  mutate(significant = ifelse(p_value < 0.05, "Yes", "No"))
-
-# Plot
-ggplot(lag_summary, aes(x = factor(lag), y = correlation, fill = significant)) +
-  geom_col() +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_fill_manual(values = c("No" = "gray", "Yes" = "red")) +
-  labs(
-    x = "Lag (Years)",
-    y = "Correlation with Violent Crime Change",
-    title = "Effect of Gentrification on Violent Crime at Different Lags",
-    subtitle = "Testing if gentrification effects take time to materialize"
-  ) +
-  theme_minimal()
+  knitr::kable(digits = 4, caption = "Lagged Gentrification Effect on Crime (1-year lag)")
 ```
+Violent crimes show a significant negative correlation (r = -0.102, p < 0.001): cities that experienced more gentrification in one year tended to have smaller increases (or larger decreases) in violent crime the following year.
 
-Including multiple lags in one model (for violent crimes)
+Non-violent crimes show a stronger and also significant negative correlation (r = -0.178, p < 0.001): gentrification is associated with subsequent reductions in non-violent crime as well.
+
+Interestingly, the lagged effect is stronger for non-violent crimes than for violent crimes in the panel setting, which contrasts with our cross-sectional findings. This suggests that while gentrification's immediate (same-period) effect may differ by crime type, its delayed effect tends to reduce both categories of crime.
+
+## Multiple lags analysis
+
 ```{r}
-library(plm)
+# Creating multiple lags for violent crimes
+violent_with_lags <- violent_crimes_panel |>
+  arrange(CODGEO, year) |>
+  group_by(CODGEO) |>
+  mutate(
+    gent_index_lag1 = dplyr::lag(gent_index, 1),
+    gent_index_lag2 = dplyr::lag(gent_index, 2),
+    gent_index_lag3 = dplyr::lag(gent_index, 3)
+  ) |>
+  ungroup()
 
-panel_multi_lag <- violent_with_lags |>
-  filter(!is.na(violent_change) & !is.na(gent_index_lag1) & !is.na(gent_index_lag2))
+# Creating multiple lags for non-violent crimes
+nonviolent_with_lags <- nonviolent_crimes_panel |>
+  arrange(CODGEO, year) |>
+  group_by(CODGEO) |>
+  mutate(
+    gent_index_lag1 = dplyr::lag(gent_index, 1),
+    gent_index_lag2 = dplyr::lag(gent_index, 2),
+    gent_index_lag3 = dplyr::lag(gent_index, 3)
+  ) |>
+  ungroup()
 
-if(nrow(panel_multi_lag) > 100) {
-  panel_data <- pdata.frame(panel_multi_lag, index = c("CODGEO", "year"))
+# Creating multiple lags for total crime
+total_with_lags <- crime_panel |>
+  arrange(CODGEO, year) |>
+  group_by(CODGEO) |>
+  mutate(
+    gent_index_lag1 = dplyr::lag(gent_index, 1),
+    gent_index_lag2 = dplyr::lag(gent_index, 2),
+    gent_index_lag3 = dplyr::lag(gent_index, 3)
+  ) |>
+  ungroup()
+
+# Function to compute correlations for each lag
+compute_lag_cors <- function(data, change_var) {
+  lag1_data <- data |> filter(!is.na({{change_var}}) & !is.na(gent_index_lag1))
+  lag2_data <- data |> filter(!is.na({{change_var}}) & !is.na(gent_index_lag2))
+  lag3_data <- data |> filter(!is.na({{change_var}}) & !is.na(gent_index_lag3))
   
-  model_lags <- plm(
-    violent_change ~ gent_index_lag1 + gent_index_lag2 + gent_index_lag3,
-    data = panel_data,
-    model = "within",
-    effect = "individual"
+  cor_lag1 <- cor.test(lag1_data$gent_index_lag1, pull(lag1_data, {{change_var}}))
+  cor_lag2 <- cor.test(lag2_data$gent_index_lag2, pull(lag2_data, {{change_var}}))
+  cor_lag3 <- cor.test(lag3_data$gent_index_lag3, pull(lag3_data, {{change_var}}))
+  
+  tibble(
+    Lag = c(1, 2, 3),
+    Correlation = c(cor_lag1$estimate, cor_lag2$estimate, cor_lag3$estimate),
+    P_value = c(cor_lag1$p.value, cor_lag2$p.value, cor_lag3$p.value),
+    N = c(nrow(lag1_data), nrow(lag2_data), nrow(lag3_data))
   )
-  
-  print(summary(model_lags))
-}
-```
-
-Visualizing the effects of lag 1 and 2 gentrification on non violent crime over time :
-```{r}
-# Create summary data
-lag_effects_nv <- data.frame(
-  Lag = c("Lag 1\n(1 year)", "Lag 2\n(2 years)"),
-  Correlation = c(0.1411, -0.09),
-  P_value = c(0, 0.0003),
-  Effect = c("Increase", "Decrease")
-)
-
-ggplot(lag_effects_nv, aes(x = Lag, y = Correlation, fill = Effect)) +
-  geom_col(width = 0.6) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  geom_text(aes(label = paste0("r = ", Correlation, "\np < 0.001")), 
-            vjust = ifelse(lag_effects_nv$Correlation > 0, -0.5, 1.5),
-            size = 4) +
-  scale_fill_manual(values = c("Increase" = "#e74c3c", "Decrease" = "#27ae60")) +
-  labs(
-    x = "Time After Gentrification",
-    y = "Correlation with Non-Violent Crime Change",
-    title = "Gentrification Effects on Non-Violent Crime Over Time",
-    subtitle = "Short-term increase followed by longer-term decrease"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
-```
-Comparison table of the effects of gentrification at lag 1 and 2 on violent and non violent crime
-```{r}
-# Summary comparison table
-comparison <- data.frame(
-  Crime_Type = c("Violent", "Violent", "Non-Violent", "Non-Violent"),
-  Lag = c("1 year", "2 years", "1 year", "2 years"),
-  Correlation = c(cor_lag1$estimate, cor_lag2$estimate, 0.1411, -0.09),
-  Significant = c(
-    ifelse(cor_lag1$p.value < 0.05, "Yes", "No"),
-    ifelse(cor_lag2$p.value < 0.05, "Yes", "No"),
-    "Yes", "Yes"
-  )
-)
-
-knitr::kable(comparison, digits = 3, 
-             col.names = c("Crime Type", "Lag", "Correlation", "Significant (p<0.05)"))
-```
-Our analysis reveals divergent temporal patterns: gentrification immediately reduces violent crime (r = -0.102) but increases non-violent crime (r = +0.141). By the second year, these relationships reverse, with violent crime rebounding (r = +0.143) while non-violent crime declines (r = -0.090). This suggests gentrification affects different crime types through distinct mechanisms—perhaps immediately deterring interpersonal violence through increased policing while initially creating new targets for property crime.
-
-## Effects by crime type 
-Testing the effects of lag gentrification by crime type (non violents)
-```{r}
-# List of crime types to test
-crime_types <- c(
-  "Violences physiques intrafamiliales",
-  "Violences physiques hors cadre familial",
-  "Vols avec armes",
-  "Vols violents sans arme",
-  "Vols sans violence contre des personnes",
-  "Vols de véhicule",
-  "Vols dans les véhicules",
-  "Vols d'accessoires sur véhicules",
-  "Cambriolages de logement",
-  "Destructions et dégradations volontaires",
-  "Escroqueries et fraudes aux moyens de paiement",
-  "Usage de stupéfiants",
-  "Trafic de stupéfiants"
-)
-
-
-# Function to test each crime type
-test_crime_type <- function(crime_col) {
-  crime_panel <- data_final |>
-    filter(CODGEO %in% gentrifiable_areas) |>
-    arrange(CODGEO, year) |>
-    mutate(
-      crime_rate = .data[[crime_col]] / insee_pop
-    ) |>
-    left_join(
-      gent_yearly |> select(CODGEO, year, gent_index),
-      by = c("CODGEO", "year")
-    ) |>
-    group_by(CODGEO) |>
-    mutate(
-      crime_change = log(crime_rate + 0.0001) - log(dplyr::lag(crime_rate) + 0.0001),
-      gent_index_lag1 = dplyr::lag(gent_index, 1)
-    ) |>
-    ungroup() |>
-    filter(!is.na(crime_change) & !is.na(gent_index_lag1) & is.finite(crime_change))
-  
-  if(nrow(crime_panel) > 30) {
-    cor_result <- cor.test(crime_panel$gent_index_lag1, crime_panel$crime_change)
-    return(data.frame(
-      crime_type = crime_col,
-      correlation = cor_result$estimate,
-      p_value = cor_result$p.value,
-      n = nrow(crime_panel),
-      significant = ifelse(cor_result$p.value < 0.05, "Yes", "No")
-    ))
-  }
 }
 
-# Run for all crime types
-crime_results <- bind_rows(lapply(crime_types, test_crime_type))
+# Compute for each crime type
+total_cors <- compute_lag_cors(total_with_lags, crime_change) |> mutate(Crime_Type = "Total")
+violent_cors <- compute_lag_cors(violent_with_lags, violent_change) |> mutate(Crime_Type = "Violent")
+nonviolent_cors <- compute_lag_cors(nonviolent_with_lags, nonviolent_change) |> mutate(Crime_Type = "Non-violent")
 
-# Display results
-crime_results |>
-  arrange(p_value) |>
-  knitr::kable(digits = 4, col.names = c("Crime Type", "Correlation", "P-value", "N", "Significant"))
+# Combine and reshape to wide format
+all_lag_results <- bind_rows(total_cors, violent_cors, nonviolent_cors) |>
+  mutate(
+    P_value = ifelse(P_value < 0.001, "< 0.001", round(P_value, 4)),
+    Result = paste0(round(Correlation, 3), " (", P_value, ")")
+  ) |>
+  select(Crime_Type, Lag, Result) |>
+  pivot_wider(
+    names_from = Lag,
+    values_from = Result,
+    names_prefix = "Lag "
+  )
 
-# Visualize
-ggplot(crime_results, aes(x = reorder(crime_type, correlation), y = correlation, fill = significant)) +
-  geom_col() +
-  coord_flip() +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_fill_manual(values = c("No" = "gray70", "Yes" = "#e74c3c")) +
-  labs(
-    x = NULL,
-    y = "Correlation with Crime Change (Lag 1)",
-    title = "Gentrification Effects by Crime Type",
-    subtitle = "Which crimes respond most to gentrification?"
-  ) +
-  theme_minimal()
+knitr::kable(all_lag_results, 
+             col.names = c("Crime Type", "1 year", "2 years", "3 years"),
+             caption = "Gentrification Effects on Crime at Different Lags (Correlation, P-value)")
 ```
--> Gentrification has only negative significant effects on "Vols sans violence contre des personnes", "Destructions et dégradations volontaires", "vols dans les véhicules", "violences physiques hors cadre familial", "vols violents sans armes", "cambriolages de logement", "vols d'accessoires sur véhicules", "escroqueries et fraudes aux moyens de paiement"
+
+This oscillating pattern suggests that gentrification's effect on crime is not permanent. The initial crime reduction is partially reversed in the short-medium term, possibly reflecting displacement effects, adjustment dynamics, or statistical mean reversion. Notably, total and non-violent crime follow nearly identical patterns, while violent crime shows the same directional effects but with smaller magnitudes.
+
+To ensure robustness, we estimate fixed effects panel models controlling for year effects and mean reversion in crime rates. Year fixed effects are particularly important given that 2020 saw an unusual decrease in crime likely due to COVID-19 lockdowns, which could otherwise confound our results. The models include gentrification at 1-year and 2-year lags; we do not extend to 3 lags as our 6-year panel (2016-2021) would leave too few observations for reliable estimation.
+```{r}
+# Prepare violent crimes data
+panel_violent_robust <- violent_with_lags |>
+  group_by(CODGEO) |>
+  mutate(violent_change_lag1 = dplyr::lag(violent_change, 1)) |>
+  ungroup() |>
+  filter(!is.na(violent_change) & 
+         !is.na(gent_index_lag1) & 
+         !is.na(gent_index_lag2) & 
+         !is.na(violent_change_lag1)) |>
+  pdata.frame(index = c("CODGEO", "year"))
+
+# Prepare non-violent crimes data
+nonviolent_with_lags <- nonviolent_crimes_panel |>
+  arrange(CODGEO, year) |>
+  group_by(CODGEO) |>
+  mutate(
+    gent_index_lag1 = dplyr::lag(gent_index, 1),
+    gent_index_lag2 = dplyr::lag(gent_index, 2),
+    nonviolent_change_lag1 = dplyr::lag(nonviolent_change, 1)
+  ) |>
+  ungroup()
+
+panel_nonviolent_robust <- nonviolent_with_lags |>
+  filter(!is.na(nonviolent_change) & 
+         !is.na(gent_index_lag1) & 
+         !is.na(gent_index_lag2) & 
+         !is.na(nonviolent_change_lag1)) |>
+  pdata.frame(index = c("CODGEO", "year"))
+
+# Prepare total crime data
+total_with_lags <- crime_panel |>
+  arrange(CODGEO, year) |>
+  group_by(CODGEO) |>
+  mutate(
+    gent_index_lag1 = dplyr::lag(gent_index, 1),
+    gent_index_lag2 = dplyr::lag(gent_index, 2),
+    crime_change_lag1 = dplyr::lag(crime_change, 1)
+  ) |>
+  ungroup()
+
+panel_total_robust <- total_with_lags |>
+  filter(!is.na(crime_change) & 
+         !is.na(gent_index_lag1) & 
+         !is.na(gent_index_lag2) & 
+         !is.na(crime_change_lag1)) |>
+  pdata.frame(index = c("CODGEO", "year"))
+
+# Model for violent crimes
+model_violent <- plm(
+  violent_change ~ gent_index_lag1 + gent_index_lag2 + violent_change_lag1,
+  data = panel_violent_robust,
+  model = "within",
+  effect = "twoways"
+)
+
+# Model for non-violent crimes
+model_nonviolent <- plm(
+  nonviolent_change ~ gent_index_lag1 + gent_index_lag2 + nonviolent_change_lag1,
+  data = panel_nonviolent_robust,
+  model = "within",
+  effect = "twoways"
+)
+
+# Model for total crime
+model_total <- plm(
+  crime_change ~ gent_index_lag1 + gent_index_lag2 + crime_change_lag1,
+  data = panel_total_robust,
+  model = "within",
+  effect = "twoways"
+)
+
+# Extract coefficients and p-values
+extract_results <- function(model, crime_type) {
+  coefs <- summary(model)$coefficients
+  tibble(
+    `Crime Type` = crime_type,
+    Variable = c("Gentrification (Lag 1)", "Gentrification (Lag 2)", "Mean reversion"),
+    Estimate = coefs[1:3, "Estimate"],
+    `P-value` = coefs[1:3, "Pr(>|t|)"]
+  )
+}
+
+# Combine results
+results_table <- bind_rows(
+  extract_results(model_total, "Total"),
+  extract_results(model_violent, "Violent"),
+  extract_results(model_nonviolent, "Non-violent")
+) |>
+  mutate(
+    `P-value` = ifelse(`P-value` < 0.001, "< 0.001", round(`P-value`, 3)),
+    Significant = case_when(
+      as.numeric(ifelse(`P-value` == "< 0.001", 0, `P-value`)) < 0.05 ~ "Yes",
+      as.numeric(ifelse(`P-value` == "< 0.001", 0, `P-value`)) < 0.10 ~ "Borderline",
+      TRUE ~ "No"
+    )
+  )
+
+knitr::kable(results_table, 
+             digits = 3,
+             caption = "Fixed Effects Panel Models with Year Controls and Mean Reversion")
+```
+The results confirm that gentrification has a modest but significant crime-reducing effect at the 1-year lag, particularly for total crime (β = -0.019, p = 0.022) and violent crime (β = -0.027, p = 0.020). The effect on non-violent crime is borderline significant (p = 0.052).
+
+Interestingly, only violent crime shows a potential cumulative effect at the 2-year lag (β = -0.022, p = 0.054), suggesting that gentrification's impact on interpersonal violence may persist longer than its effect on property crime.
+
+All models show strong mean reversion (β ≈ -0.50), indicating that crime rates naturally oscillate over time. After controlling for this, gentrification explains a small but statistically significant portion of crime changes.
 
 # Robustness checks
 
