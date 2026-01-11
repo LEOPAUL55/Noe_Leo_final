@@ -297,7 +297,6 @@ data_final <- poverty |>
   filter(!is.na(Prixm2Moyen)) |>
   filter(n_distinct(year) == 6) |>
   ungroup() |>
-  filter(insee_pop >= MIN_POPULATION) |>
   mutate(
     crime_rate = (total_crimes / insee_pop) * 100,
     covid_period = year >= 2020,
@@ -375,13 +374,16 @@ crime <- vroom(
     nombre = col_integer(),
     insee_pop = col_integer()
   )
-)|>
+) |>
+  # Filter out BOTH drug crimes AND sexual violence here
+  filter(!indicateur %in% c("Usage de stupéfiants (AFD)", "Violences sexuelles")) |>
+  
   pivot_wider(
     names_from = indicateur,
     values_from = nombre,
     values_fill = 0
   ) |>
-  rename(CODGEO = CODGEO_2025)|>
+  rename(CODGEO = CODGEO_2025) |>
   mutate(
     total_crimes = rowSums(
       across(-c(CODGEO, annee, insee_pop)),
@@ -566,7 +568,7 @@ crime_wide <- data_final |>
                `Trafic de stupéfiants`)),
       na.rm = TRUE
     ),
-    total_excl_sexual = total_crimes - `Violences sexuelles`,
+    total_excl_sexual = total_crimes,
     violent_rate = (violent_total / insee_pop) * 100,
     nonviolent_rate = (nonviolent_total / insee_pop) * 100,
     total_rate_excl = (total_excl_sexual / insee_pop) * 100
@@ -840,7 +842,21 @@ Crime change by type and gentrification intensity
 # Reshaping crime data per type
 crime_change_type_continuous <- data_final |>
   pivot_longer(
-    cols = 8:22,
+    cols = c(
+      `Violences physiques intrafamiliales`,
+      `Violences physiques hors cadre familial`,
+      `Vols avec armes`,
+      `Vols violents sans arme`,
+      `Vols sans violence contre des personnes`,
+      `Vols de véhicule`,
+      `Vols dans les véhicules`,
+      `Vols d'accessoires sur véhicules`,
+      `Cambriolages de logement`,
+      `Destructions et dégradations volontaires`,
+      `Escroqueries et fraudes aux moyens de paiement`,
+      `Usage de stupéfiants`,
+      `Trafic de stupéfiants`
+    ),
     names_to = "crime_type",
     values_to = "crime_count"
   ) |>
@@ -1416,8 +1432,21 @@ knitr::kable(comparison, digits = 3,
 Testing the effects of lag gentrification by crime type (non violents)
 ```{r}
 # List of crime types to test
-crime_types <- names(data_final)[8:22]
-crime_types <- crime_types[crime_types != "Violences sexuelles"]
+crime_types <- c(
+  "Violences physiques intrafamiliales",
+  "Violences physiques hors cadre familial",
+  "Vols avec armes",
+  "Vols violents sans arme",
+  "Vols sans violence contre des personnes",
+  "Vols de véhicule",
+  "Vols dans les véhicules",
+  "Vols d'accessoires sur véhicules",
+  "Cambriolages de logement",
+  "Destructions et dégradations volontaires",
+  "Escroqueries et fraudes aux moyens de paiement",
+  "Usage de stupéfiants",
+  "Trafic de stupéfiants"
+)
 
 
 # Function to test each crime type
