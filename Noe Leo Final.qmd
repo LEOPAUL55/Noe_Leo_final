@@ -154,6 +154,136 @@ Using these data, we can create a gentrification index that is implementable to 
 
 Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, the city is as gentrify as the national mean). Finally, we exclude the city that have a median income greater than 60% of the national one, considering they are already composed of upper classes, so it cannot be gentrified.
 
+## b. Descriptive statistics: visual exploration of the data
+
+### Gentrification in France, where?
+
+To determine what cities are the most affected by gentrification, we compute the global variation of the economic data between 2016 and 2021. Applying the gentrification index to these data, it is showed in the following table that the most gentrified cities are mainly located in the neighborhoods of the big urban areas, especially Paris (Clichy, Romainville, Saint-Ouen-sur-Seine...). Cities like Clichy or Saint-Ouen-sur-Seine are famous to have been rehabilitate during the last years, that leds to an important gentrification. This is validated by the index.
+
+```{r, echo=FALSE}
+#Taking the earliest year of data for each demographic area (CODGEO)
+baseline <- data_final |>
+  group_by(CODGEO) |>
+  filter(year == min(year)) |>
+  #capturing the median income as the starting point
+  ungroup() |>
+  select(CODGEO, baseline_med = MED)
+
+#Making sure only areas below the "60% of median income" threshold are considered "gentrifiable" (by definition, only lower income areas can gentrify)
+percentile_cutoff <- quantile(baseline$baseline_med, 0.60, na.rm = TRUE)
+```
+
+```{r, echo=FALSE}
+#Calculating changes over time 
+gentrifiable_areas <- baseline |>
+  filter(baseline_med < percentile_cutoff) |>
+  pull(CODGEO)
+
+# Calculating percentage changes from first to last year
+evolution <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>  
+  group_by(CODGEO) |>
+  summarise(
+    price_var   = ((last(Prixm2Moyen) / first(Prixm2Moyen)) - 1) * 100,
+    med_inc_var = (last(MED) / first(MED) - 1) * 100,
+    d9_var      = (last(D9) / first(D9) - 1) * 100,
+    d1_var      = (last(D1) / first(D1) - 1) * 100,
+    pov_var     = last(TP60) - first(TP60),
+    .groups = "drop"
+  ) |>
+  left_join(city_names, by = "CODGEO")
+```
+
+```{r, echo=FALSE}
+# Converting all the variables to z-score so it makes the different metrics comparable despite different scales 
+evolution_std <- evolution |>
+  mutate(across(
+    c(price_var, med_inc_var, d9_var, d1_var, pov_var),
+    scale
+  ))
+```
+
+```{r, echo=FALSE}
+evolution_std <- evolution_std |>
+  mutate(
+    gent_index = 
+      (price_var * 0.25) +   # Emphasizes housing price
+      (med_inc_var * 0.2) +  #Median income
+      (d9_var * 0.1) +       # Top income
+      (d1_var * 0.35) -      #Bottom income
+      (pov_var * 0.1)        # Poverty reduction
+  ) |>
+  arrange(desc(gent_index))
+
+
+# Sorting areas by gentrification intensity
+evolution_std_A <- evolution_std |>
+  head(10) |>
+  select(CODGEO, LIBGEO, gent_index)|> 
+  knitr::kable()
+
+print(evolution_std_A)
+```
+Moreover, the data also show how gentrification is an urban process. The following graphic represents the average degree of gentrification computed by the index, in function of the side of the population in 2016. It does not show a clear positive relation between both variables, because the relation increases and then deceases. Nevertheless, it shows how the gentrification index is negative and less intense in the smallest cities (less than 50 000 inhabitants), which means gentrification in smallest cities is less intense than the average. It validates the correlation between size of the town and degree of gentrification.
+
+```{r}
+pop_2016 <- data_final |> 
+  filter(year == 2016) |> 
+  select(c(CODGEO, insee_pop)) 
+
+evolution_std_groups <- evolution_std |>
+  left_join(pop_2016, by = "CODGEO") |>
+  mutate(
+    pop_bin = cut(
+      insee_pop,
+      breaks = seq(
+        floor(min(insee_pop, na.rm = TRUE) / 10000) * 10000,
+        ceiling(max(insee_pop, na.rm = TRUE) / 10000) * 10000,
+        by = 10000
+      ),
+      right = FALSE
+    )
+  )
+
+gent_by_pop <- evolution_std_groups |>
+  group_by(pop_bin) |>
+  summarise(
+    mean_gent = mean(gent_index, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    pop_bin_num = as.numeric(sub("\\[(.*),.*", "\\1", pop_bin)))
+
+ggplot(gent_by_pop,
+       aes(x = pop_bin_num, y = mean_gent)) +
+  geom_line(color = "steelblue", linewidth = 1.2) +
+  geom_point(color = "steelblue", size = 3) +
+  scale_x_continuous(
+    breaks = seq(
+      min(gent_by_pop$pop_bin_num, na.rm = TRUE),
+      max(gent_by_pop$pop_bin_num, na.rm = TRUE),
+      by = 50000
+    ),
+    labels = scales::label_number(big.mark = " ")
+  ) +
+  labs(
+    x = "Population (bins of 50,000 inhabitants)",
+    y = "Average gentrification index",
+    title = "Average gentrification by population size"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+
+
+
+
+
+
+
+
+
+
 # Descriptive analysis of the crime rate evolution from 2016 to 2021 - comparison between violent and non violent crimes
 
 ```{r}
@@ -224,94 +354,6 @@ ggplot(crime_wide, aes(x = year)) +
   )
 ```
 
-# Building a gentrification index between first year and last year :
-
-Identifying areas that could gentrify :
-
-```{r}
-#Taking the earliest year of data for each demographic area (CODGEO)
-baseline <- data_final |>
-  group_by(CODGEO) |>
-  filter(year == min(year)) |>
-  #capturing the median income as the starting point
-  ungroup() |>
-  select(CODGEO, baseline_med = MED)
-
-#Making sure only areas below the "60% of median income" threshold are considered "gentrifiable" (by definition, only lower income areas can gentrify)
-percentile_cutoff <- quantile(baseline$baseline_med, 0.60, na.rm = TRUE)
-```
-
-Calculating changes over time :
-
-```{r}
-gentrifiable_areas <- baseline |>
-  filter(baseline_med < percentile_cutoff) |>
-  pull(CODGEO)
-
-# Calculating percentage changes from first to last year
-evolution <- data_final |>
-  filter(CODGEO %in% gentrifiable_areas) |>  
-  group_by(CODGEO) |>
-  summarise(
-    price_var   = ((last(Prixm2Moyen) / first(Prixm2Moyen)) - 1) * 100,
-    med_inc_var = (last(MED) / first(MED) - 1) * 100,
-    d9_var      = (last(D9) / first(D9) - 1) * 100,
-    d1_var      = (last(D1) / first(D1) - 1) * 100,
-    pov_var     = last(TP60) - first(TP60),
-    .groups = "drop"
-  ) |>
-  left_join(city_names, by = "CODGEO")
-
-# Flipping signs for interpretation : making increases in low incomes and decrease in poverty show as positive values: this aligns indicators so higher values = more gentrification
-evolution <- evolution |>
-  mutate(
-    pov_var = -pov_var
-  )
-```
-
-Standardizing the variables :
-
-```{r}
-# Converting all the variables to z-score so it makes the different metrics comparable despite different scales 
-evolution_std <- evolution |>
-  mutate(across(
-    c(price_var, med_inc_var, d9_var, d1_var, pov_var),
-    scale
-  ))
-```
-
-Creating a weighted gentrification index
-
-```{r}
-evolution_std <- evolution_std |>
-  mutate(
-    gent_index = 
-      (price_var * 0.25) +   # Emphasizes housing price
-      (med_inc_var * 0.2) +  #Median income
-      (d9_var * 0.1) +       # Top income
-      (d1_var * 0.35) +      #Bottom income
-      (pov_var * 0.1)        # Poverty reduction
-  )
-
-
-# Sorting areas by gentrification intensity
-evolution_std <- evolution_std |>
-  arrange(desc(gent_index))
-evolution_std_A <- evolution_std
-
-# Displaying most gentrified areas
-evolution_std_A |>
-  head(10) |>
-  select(CODGEO, LIBGEO, gent_index)
-
-# Checking the validity of the index using Cronbach's alpha 
-library(psych)
-psych::alpha(evolution_std |> select(price_var, med_inc_var, d9_var, d1_var, pov_var), check.keys = TRUE)
-
-```
-
--\> The Cronbach's alpha test tells us that the indicator we used is
-valid and reliable, and that all indicators contribute meaningfully
 
 # Cross sectional analysis
 
