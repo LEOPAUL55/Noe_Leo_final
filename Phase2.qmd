@@ -425,6 +425,7 @@ dataset_info <- data.table(
 )
 
 knitr::kable(dataset_info, caption = "Dataset overview")
+
 ```
 
 # Research question :

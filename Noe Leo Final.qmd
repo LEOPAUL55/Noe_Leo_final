@@ -154,128 +154,7 @@ Using these data, we can create a gentrification index that is implementable to 
 
 Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, the city is as gentrify as the national mean). Finally, we exclude the city that have a median income greater than 60% of the national one, considering they are already composed of upper classes, so it cannot be gentrified.
 
-## b. Descriptive statistics: visual exploration of the data
-
-### Gentrification in France, where?
-
-To determine what cities are the most affected by gentrification, we compute the global variation of the economic data between 2016 and 2021. Applying the gentrification index to these data, it is showed in the following table that the most gentrified cities are mainly located in the neighborhoods of the big urban areas, especially Paris (Clichy, Romainville, Saint-Ouen-sur-Seine...). Cities like Clichy or Saint-Ouen-sur-Seine are famous to have been rehabilitate during the last years, that leds to an important gentrification. This is validated by the index.
-
-```{r, echo=FALSE}
-#Taking the earliest year of data for each demographic area (CODGEO)
-baseline <- data_final |>
-  group_by(CODGEO) |>
-  filter(year == min(year)) |>
-  #capturing the median income as the starting point
-  ungroup() |>
-  select(CODGEO, baseline_med = MED)
-
-#Making sure only areas below the "60% of median income" threshold are considered "gentrifiable" (by definition, only lower income areas can gentrify)
-percentile_cutoff <- quantile(baseline$baseline_med, 0.60, na.rm = TRUE)
-```
-
-```{r, echo=FALSE}
-#Calculating changes over time 
-gentrifiable_areas <- baseline |>
-  filter(baseline_med < percentile_cutoff) |>
-  pull(CODGEO)
-
-# Calculating percentage changes from first to last year
-evolution <- data_final |>
-  filter(CODGEO %in% gentrifiable_areas) |>  
-  group_by(CODGEO) |>
-  summarise(
-    price_var   = ((last(Prixm2Moyen) / first(Prixm2Moyen)) - 1) * 100,
-    med_inc_var = (last(MED) / first(MED) - 1) * 100,
-    d9_var      = (last(D9) / first(D9) - 1) * 100,
-    d1_var      = (last(D1) / first(D1) - 1) * 100,
-    pov_var     = last(TP60) - first(TP60),
-    .groups = "drop"
-  ) |>
-  left_join(city_names, by = "CODGEO")
-```
-
-```{r, echo=FALSE}
-# Converting all the variables to z-score so it makes the different metrics comparable despite different scales 
-evolution_std <- evolution |>
-  mutate(across(
-    c(price_var, med_inc_var, d9_var, d1_var, pov_var),
-    scale
-  ))
-```
-
-```{r, echo=FALSE}
-evolution_std <- evolution_std |>
-  mutate(
-    gent_index = 
-      (price_var * 0.25) +   # Emphasizes housing price
-      (med_inc_var * 0.2) +  #Median income
-      (d9_var * 0.1) +       # Top income
-      (d1_var * 0.35) -      #Bottom income
-      (pov_var * 0.1)        # Poverty reduction
-  ) |>
-  arrange(desc(gent_index))
-
-
-# Sorting areas by gentrification intensity
-evolution_std_A <- evolution_std |>
-  head(10) |>
-  select(CODGEO, LIBGEO, gent_index)|> 
-  knitr::kable()
-
-print(evolution_std_A)
-```
-Moreover, the data also show how gentrification is an urban process. The following graphic represents the average degree of gentrification computed by the index, in function of the side of the population in 2016. It does not show a clear positive relation between both variables, because the relation increases and then deceases. Nevertheless, it shows how the gentrification index is negative and less intense in the smallest cities (less than 50 000 inhabitants), which means gentrification in smallest cities is less intense than the average. It validates the correlation between size of the town and degree of gentrification.
-
-```{r}
-pop_2016 <- data_final |> 
-  filter(year == 2016) |> 
-  select(c(CODGEO, insee_pop)) 
-
-evolution_std_groups <- evolution_std |>
-  left_join(pop_2016, by = "CODGEO") |>
-  mutate(
-    pop_bin = cut(
-      insee_pop,
-      breaks = seq(
-        floor(min(insee_pop, na.rm = TRUE) / 10000) * 10000,
-        ceiling(max(insee_pop, na.rm = TRUE) / 10000) * 10000,
-        by = 10000
-      ),
-      right = FALSE
-    )
-  )
-
-gent_by_pop <- evolution_std_groups |>
-  group_by(pop_bin) |>
-  summarise(
-    mean_gent = mean(gent_index, na.rm = TRUE),
-    .groups = "drop"
-  ) |>
-  mutate(
-    pop_bin_num = as.numeric(sub("\\[(.*),.*", "\\1", pop_bin)))
-
-ggplot(gent_by_pop,
-       aes(x = pop_bin_num, y = mean_gent)) +
-  geom_line(color = "steelblue", linewidth = 1.2) +
-  geom_point(color = "steelblue", size = 3) +
-  scale_x_continuous(
-    breaks = seq(
-      min(gent_by_pop$pop_bin_num, na.rm = TRUE),
-      max(gent_by_pop$pop_bin_num, na.rm = TRUE),
-      by = 50000
-    ),
-    labels = scales::label_number(big.mark = " ")
-  ) +
-  labs(
-    x = "Population (bins of 50,000 inhabitants)",
-    y = "Average gentrification index",
-    title = "Average gentrification by population size"
-  ) +
-  theme_minimal(base_size = 14)
-```
-### Criminality in France, evolution between 2016 and 2021
-
-To first understand criminality in France and its evolution, we represent it grouping crimes and offences according to the violence character (violent, non-violent). We consider as violent the following crimes: domestic physical violence, non domestic physical violence, armed robberies and non armed violent robberies. The rest is reported as non violent (non violent robberies against persons, vehicle thefts, theft of vehicle accessories, willful damage and vandalism, fraud and payment method fraud, drug use, drug dealing, home invasions).
+# Descriptive analysis of the crime rate evolution from 2016 to 2021 - comparison between violent and non violent crimes
 
 ```{r}
 crime_wide <- data_final |>
@@ -344,33 +223,112 @@ ggplot(crime_wide, aes(x = year)) +
     axis.text.y.right = element_text(color = "#e74c3c")
   )
 ```
-The above graphic shows the evolution of crime per type (violent, non violent) on the period. We observe a global decrease of non violent crime on the period, with an unstopped fall until 2020 followed by a new increase. The observation is different for the violent crime that have a positive trend on the period, with an only decrease between 2019 and 2020. The mix of both types' crime gives a decreasing trend for the total crime that shaped the non violent crime evolution, with a positive evolution the last year.
 
-### What correlation between gentrification and crime?
+# Building a gentrification index between first year and last year :
 
-Let's compare between 3 arbitrary gentrification categories among the "gentrifiable" cities : Low gentrification (bottom 25% of the index), medium gentrification (middle 50% of the index) and high gentrification (top 25% of the index).
+Identifying areas that could gentrify :
+
 ```{r}
-evolution_std_A_groups <- evolution_std_A |>
+#Taking the earliest year of data for each demographic area (CODGEO)
+baseline <- data_final |>
+  group_by(CODGEO) |>
+  filter(year == min(year)) |>
+  #capturing the median income as the starting point
+  ungroup() |>
+  select(CODGEO, baseline_med = MED)
+
+#Making sure only areas below the "60% of median income" threshold are considered "gentrifiable" (by definition, only lower income areas can gentrify)
+percentile_cutoff <- quantile(baseline$baseline_med, 0.60, na.rm = TRUE)
+```
+
+Calculating changes over time :
+
+```{r}
+gentrifiable_areas <- baseline |>
+  filter(baseline_med < percentile_cutoff) |>
+  pull(CODGEO)
+
+# Calculating percentage changes from first to last year
+evolution <- data_final |>
+  filter(CODGEO %in% gentrifiable_areas) |>  
+  group_by(CODGEO) |>
+  summarise(
+    price_var   = ((last(Prixm2Moyen) / first(Prixm2Moyen)) - 1) * 100,
+    med_inc_var = (last(MED) / first(MED) - 1) * 100,
+    d9_var      = (last(D9) / first(D9) - 1) * 100,
+    d1_var      = (last(D1) / first(D1) - 1) * 100,
+    pov_var     = last(TP60) - first(TP60),
+    .groups = "drop"
+  ) |>
+  left_join(city_names, by = "CODGEO")
+
+# Flipping signs for interpretation : making increases in low incomes and decrease in poverty show as positive values: this aligns indicators so higher values = more gentrification
+evolution <- evolution |>
   mutate(
-    gent_category = case_when(
-      gent_index > quantile(gent_index, 0.75, na.rm = TRUE) ~ "High",
-      gent_index > quantile(gent_index, 0.25, na.rm = TRUE) ~ "Medium",
-      TRUE ~ "Low"
-    ),
-    gent_category = factor(gent_category, levels = c("Low", "Medium", "High"))
+    pov_var = -pov_var
   )
 ```
-Keeping the same nomenclature, the following graphic seems to depict a positive correlation between gentrification and crime. The period observes a global decrease in criminality, still different according to the degree of gentrification. Violent crimes rose everywhere, but in a more important way in highly gentrified cities. Same for the non violent crimes that decreased in every cities but less intensely in the highly gentrified cities compared to low and medium gentrified cities.
+
+Standardizing the variables :
+
+```{r}
+# Converting all the variables to z-score so it makes the different metrics comparable despite different scales 
+evolution_std <- evolution |>
+  mutate(across(
+    c(price_var, med_inc_var, d9_var, d1_var, pov_var),
+    scale
+  ))
+```
+
+Creating a weighted gentrification index
+
+```{r}
+evolution_std <- evolution_std |>
+  mutate(
+    gent_index = 
+      (price_var * 0.25) +   # Emphasizes housing price
+      (med_inc_var * 0.2) +  #Median income
+      (d9_var * 0.1) +       # Top income
+      (d1_var * 0.35) +      #Bottom income
+      (pov_var * 0.1)        # Poverty reduction
+  )
 
 
+# Sorting areas by gentrification intensity
+evolution_std <- evolution_std |>
+  arrange(desc(gent_index))
+evolution_std_A <- evolution_std
 
+# Displaying most gentrified areas
+evolution_std_A |>
+  head(10) |>
+  select(CODGEO, LIBGEO, gent_index)
 
+# Checking the validity of the index using Cronbach's alpha 
+library(psych)
+psych::alpha(evolution_std |> select(price_var, med_inc_var, d9_var, d1_var, pov_var), check.keys = TRUE)
 
+```
 
+-\> The Cronbach's alpha test tells us that the indicator we used is
+valid and reliable, and that all indicators contribute meaningfully
 
 # Cross sectional analysis
 
+After constructing the gentrification index for all eligible French cities (those with baseline median income below the 60th percentile of the national distribution), we proceed to examine the relationship between gentrification intensity and changes in crime rates over the 2016–2021 period. The analysis is cross-sectional: for each city, we compute the percentage change in crime rate between the first and last year of observation, and correlate this change with the standardized gentrification index.
+
+To facilitate interpretation, we categorize cities into three groups based on their gentrification index:
+
+Low gentrification: bottom 25% of the index distribution
+
+Medium gentrification: middle 50%
+
+High gentrification: top 25%
+
+These categories allow us to compare how crime evolved differently across areas experiencing varying degrees of socioeconomic transformation.
 ```{r}
+#| include: false
+
 evolution_std_A_groups <- evolution_std_A |>
   mutate(
     gent_category = case_when(
@@ -404,8 +362,9 @@ crime_rate_change_continuous <- data_final |>
 
 ```
 
-Scatter plot of the crime rate change compared to the gentrification
-index
+## Visual exploration: Scatter plot
+
+The scatter plot below displays the relationship between the gentrification index (horizontal axis) and the percentage change in crime rate (vertical axis) for all 899 cities in our sample.
 
 ```{r}
 library(viridis)
@@ -436,12 +395,16 @@ ggplot(crime_rate_change_continuous,
     legend.position = "right"
   )
 ```
--> Visually, it seems to exist a slight correlation between gentrification intensity and crime rate change between 2016 and 2021 among gentrifiable cities : less gentrified cities tend to experiment more crime rate reduction than more gentrified cities
+Visually, a slight negative trend emerges: cities with higher gentrification indices tend to experience smaller reductions (or even increases) in crime rates compared to less gentrified cities. The cloud of points is dispersed, suggesting considerable heterogeneity.
 
 
-## Gentrification categories :
-Let's compare between 3 arbitrary gentrification categories among the "gentrifiable" cities : Low gentrification (bottom 25% of the index), medium gentrification (middle 50% of the index) and high gentrification (top 25% of the index) :
+## Comparing crime rate changes across gentrification categories
+
+To better quantify these differences, we compute the mean and median crime rate changes for each gentrification category, along with 95% confidence intervals.
+
 ```{r}
+#| include: false
+
 evolution_std_A_groups <- evolution_std_A |>
   mutate(
     gent_category = case_when(
@@ -452,12 +415,7 @@ evolution_std_A_groups <- evolution_std_A |>
     gent_category = factor(gent_category, levels = c("Low", "Medium", "High"))
   )
 
-table(evolution_std_A_groups$gent_category)
 ```
-
-## Crime change by category
-
--> Visually, it seems to exist a slight correlation between gentrification intensity and crime rate change between 2016 and 2021 among gentrifiable cities : less gentrified cities tend to experiment more crime rate reduction than more gentrified cities
 
 Plotting the crime rate change among three arbitrary gentrification levels :
 
@@ -501,7 +459,7 @@ ggplot(ci_stats |> filter(gent_category %in% c("Low", "High", "Medium")),
     panel.grid.minor = element_blank()
   )
 ```
--> There is a diminution in crime rate between all three gentrification levels, with a higher diminution for the low category and a lower diminution for the highly gentrified category
+All three categories experienced a reduction in crime rates between 2016 and 2021, consistent with national crime trends in France during this period. However, the magnitude of the reduction varies:
 
 Crime change by type and gentrification intensity : 
 ```{r}
