@@ -118,13 +118,11 @@ ppsm_paris <- vroom(
     values_to = "Prixm2Moyen"
   ) |>
   transmute(
-    CODGEO = as.character(75100 + as.integer(str_remove(arrondissement, "er|e"))),
+    CODGEO = as.character(75100 + as.integer(str_remove(arrondissement,
+                                                        "er|e"))),
     year,
     Prixm2Moyen = as.numeric(str_remove_all(Prixm2Moyen, "[ €]"))
   ) |>
-  arrange(year, CODGEO)
-
-ppsm <- bind_rows(ppsm, ppsm_paris) |>
   arrange(year, CODGEO)
 ```
 
@@ -194,10 +192,14 @@ load_poverty <- function(file) {
     ) |>
       transmute(
         CODGEO,
-        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19", "MED20", "MED21")))),
-        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019", "TP6020", "TP6021")))),
-        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120", "D121")))),
-        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920", "D921")))),
+        MED  = Reduce(coalesce, pick(any_of(c("MED16", "MED17", "MED19",
+                                              "MED20", "MED21")))),
+        TP60 = Reduce(coalesce, pick(any_of(c("TP6016", "TP6017", "TP6019",
+                                              "TP6020", "TP6021")))),
+        D1   = Reduce(coalesce, pick(any_of(c("D116", "D117", "D119", "D120", 
+                                              "D121")))),
+        D9   = Reduce(coalesce, pick(any_of(c("D916", "D917", "D919", "D920", 
+                                              "D921")))),
         year
       )
   } else if (year == 2018) {
@@ -293,7 +295,8 @@ crime <- vroom(
   ),
   show_col_types = FALSE
 ) |>
-  filter(!indicateur %in% c("Usage de stupéfiants (AFD)", "Violences sexuelles")) |>
+  filter(!indicateur %in% c("Usage de stupéfiants (AFD)", 
+                            "Violences sexuelles")) |>
   pivot_wider(
     names_from = indicateur,
     values_from = nombre,
@@ -335,31 +338,35 @@ data_final <- poverty |>
   select(-IRIS) |>
   left_join(city_names, by = "CODGEO") |>
   distinct(CODGEO, year, .keep_all = TRUE) |>
-  group_by(CODGEO) |>
-  filter(n_distinct(year) == 6) |>
-  ungroup() |>
+  # Calculate crime_rate first
   mutate(
     crime_rate = (total_crimes / insee_pop) * 100
   ) |>
-   filter(!is.na(crime_rate), !is.na(Prixm2Moyen)) |>
-  filter (insee_pop >= 5000)
+  # Group and filter (OLD ORDER)
+  group_by(CODGEO) |>
+  filter(!is.na(Prixm2Moyen)) |>         # Filter NAs FIRST
+  filter(!is.na(crime_rate)) |>           # Filter NA crime rates
+  filter(n_distinct(year) == 6) |>        # THEN check for 6 years
+  ungroup() |>
+  # Population filter (NEW)
+  filter(insee_pop >= 5000)
 ```
 
-We obtained a clean dataset for 897 cities between 2016 and 2021.
+We obtained a clean dataset for `r n_distinct(data_final$CODGEO)` cities between 2016 and 2021.
 
 # Cleaned data tables : summary and most important variables
 
 After loading the datasets, we needed to convert the IRIS code into the
 GEOCODE by weighting the poverty rate of each geocode by the population
 of the corresponding IRIS code. By doing that, we obtained clean data
-for 994 cities. We only focus on these cities in the analysis from 2016
-to 2021. We also computed the poverty rate for each city.
+for `r n_distinct(data_final$CODGEO)` cities. We only focus on these cities in the analysis from 2016
+to 2021. We also computed the crime rates for each city.
 
 We only kept the variables of interest by loading the datasets, that are
 the poverty rate, the first and last decile, the median income, the
 number of crimes per crime type and the real estate price (average price
-per square meter).Then we merged them into an only dataset that combines
-all the data per cities per years.
+per square meter).Then we merged them into a single dataset that combines
+all the data per cities per year.
 
 ```{r}
 #| label: summary-table
@@ -407,7 +414,8 @@ knitr::kable(summary_table, caption = "Variables in the final dataset")
 #| echo: false
 
 dataset_info <- data.table(
-  Metric = c("Number of observations", "Number of variables", "Number of cities", "Time period"),
+  Metric = c("Number of observations", "Number of variables", 
+             "Number of cities", "Time period"),
   Value = c(
     format(nrow(data_final), big.mark = ","),
     ncol(data_final),
@@ -431,17 +439,14 @@ few variables: square meter price growth, median wage growth, poverty
 rate growth.
 
 Then we will select the cities with the highest gentrification index
-(say top 20%) and compare it to the rest of the cities : do we observe a
-declination in terms of delinquency between the top 20% and the others?
+(say top 25%) and compare it to the rest of the cities : do we observe a
+declination in terms of crime  between the top 25% and the others? Do we observe any linear relationship between crime rate growth and gentrification ?
 If yes, do we observe a spatial displacement of crime to non-gentrifying
 areas?
 
 ```{r}
-
 #| label: filter-and-save-datasets
-#| echo: false
-#| message: false
-#| warning: false
+#| include: false 
 
 # Get the exact CODGEO-year combinations from data_final
 valid_keys <- data_final |> 
@@ -488,3 +493,9 @@ saveRDS(poverty_clean, here("data", "cleaned", "poverty.rds"))
 saveRDS(crime_clean, here("data", "cleaned", "crime.rds"))
 saveRDS(ppsm_clean, here("data", "cleaned", "ppsm.rds"))
 ```
+
+
+
+
+
+
