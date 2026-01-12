@@ -1,5 +1,6 @@
 ---
 title: "The Relationship Between City-Level Gentrification and Crime Rates: A Study of French Cities (2016-2021)"
+author: "Léo-Paul Garelli and Noé Mansuy"
 format: 
   pdf:
     fig-align: center
@@ -19,7 +20,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-Please find the Github project here : https://github.com/LEOPAUL55/Noe_Leo_final.git
+**GitHub Repository:** [https://github.com/LEOPAUL55/Noe_Leo_final](https://github.com/LEOPAUL55/Noe_Leo_final)
 
 # Research question
 
@@ -101,11 +102,11 @@ The gentrification index is constructed using economic indicators per city per y
 
 1.  **Real estate price - Datagouv / Chambre des notaires de Paris** 
 
-The informations about the real estate price per city are available on the France state's site. They are given in the files called "Demande de valeur foncière" for every year, that is from 2016 to 2021. This is a collection of various variables on residential housing market at the city level between 2014 and 2024. What is interesting for us is the mean price by square meter of the goods that have been sold each year. This was published by Boris Mericksay. Unfortunatlely, the informations about Paris at the arrondissement level are missing in those files. These important informations can be found on the Chambre des notaires de Paris' site that gives the trimestrial average square meter price of selling. For simplicity, we only focus on the selling price of appartements in the city from 2016 to 2021 (trimester 4). The available file is a PDF that can be easily convert into a CSV file.
+The informations about the real estate price per city are available on the France state's site. They are given in the files called "Demande de valeur foncière" for every year, that is from 2016 to 2021. This is a collection of various variables on residential housing market at the city level between 2014 and 2024. What is interesting for us is the mean price by square meter of the goods that have been sold each year. This was published by Boris Mericksay. Unfortunately, the informations about Paris at the arrondissement level are missing in those files. These important informations can be found on the Chambre des notaires de Paris' site that gives the trimestrial average square meter price of selling. For simplicity, we only focus on the selling price of appartements in the city from 2016 to 2021 (trimester 4). The available file is a PDF that can be easily convert into a CSV file.
 
 2.  **Average standard of living - Insee** 
 
-The files "poverty" are collections of indicators of disposable income in France, at the city level, between 2016 and 2021. We will only focus on the poverty rate, the median standard of living, the first and the ninth deciles. Poverty data are provided as separate yearly files with heterogeneous structures. Variable names differ across years, and the 2018 data are reported at the IRIS level rather than the commune level. To handle this, we implement a loading strategy that reads each file separately while restricting imports to the variables of interest (years 2016:2021). Poverty indicators are harmonized across years. Non‑numeric values are explicitly converted to missing values during loading, but it won't affect our analysis because this only concerns small cities. The result is a consistent panel of indicators comparable across years.
+The files "poverty" are collections of indicators of disposable income in France, at the city level, between 2016 and 2021. We will only focus on the poverty rate, the median standard of living, the first and the ninth deciles. Poverty data are provided as separate yearly files with heterogeneous structures. Variable names differ across years, and the 2018 data are reported at the IRIS level rather than the commune level. To handle this, we implement a loading strategy that reads each file separately while restricting imports to the variables of interest (years 2016:2021). Poverty indicators are harmonized across years. Non‑numeric values are explicitly converted to missing values during loading, but this will not affect our analysis because this only concerns small cities. The result is a consistent panel of indicators comparable across years.
 
 3.  **Criminality - Datagouv / Ministère de l'intérieur** 
 
@@ -255,7 +256,7 @@ Using these data, we can create a gentrification index that is implementable to 
 
 **Gentrification** = (**price_var** * 0.25) + (**MED_var** * 0.20) + (**D9_var** * 0.10) + (**D1_var** * 0.35) + (**TP60_var** * 0.10)
 
-Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, the city is as gentrify as the national mean). Finally, we exclude the city that have a median income greater than 60% of the national one, considering they are already composed of upper classes, so it cannot be gentrified.
+Gentrification is not about the level of the variables, but their variation. Thus we need to compute the variation in percentage of each variable to implement the formula. Moreover, we justify the weight given to each variable thanks to the literature. According to the initial definition (Ruth Glass, 1964) combined with the work of Neil Smith and the Rent-Gap Theory (1979), gentrification mainly materialized by the displacement of the working class as well as the rise in the real estate price, that justifies the heavy weight on the first decile (D1_var) and the square meter price (price_var). To make the index meaningful, we standardize it using the z-score standardization and center it around 0 (if the index is equal to 0, the city is as gentrified as the national mean). Finally, we exclude the city that have a median income greater than 60% of the national one, considering they are already composed of upper classes, so it cannot be gentrified.
 
 ```{r, echo=FALSE}
 #Taking the earliest year of data for each demographic area (CODGEO)
@@ -691,7 +692,8 @@ kruskal_by_crime_type <- crime_change_type_continuous |>
   arrange(p_value)
 
 # Display results
-knitr::kable(kruskal_by_crime_type, 
+knitr::kable(kruskal_by_crime_type,
+             booktabs = TRUE,
              digits = 4,
              col.names = c("Crime Type", "Chi-squared", "P-value", "N", "Significant"))
 ```
@@ -1425,7 +1427,7 @@ knitr::kable(granger_results,
              digits = 3, 
              caption = "Granger Causality Tests by Crime Type")
 ```
-After controlling for city fixed effects, year fixed effects, and department crime trends, neither own gentrification nor neighbor gentrification significantly predicts crime changes. This suggests that there is no evidence of short term spatial spillovers or crime displacement to neighboring areas once we account for common temporal shocks at the city level. However, this result has significant limitations and should not be interpreted as "gentrification has no spatial spillover effect" (see Conclusion)
+The results suggest an asymmetric causal relationship. Gentrification significantly predicts subsequent crime reductions for total crime (p = 0.031), with borderline effects for violent (p = 0.052) and non-violent crime (p = 0.051). Conversely, lagged crime changes do not significantly predict subsequent gentrification (all p > 0.38). This asymmetry suggests that the causal direction runs primarily from gentrification to crime—gentrifying areas experience reduced crime growth, but declining crime does not appear to attract gentrification. This strengthens the interpretation that gentrification has a genuine, albeit modest, crime-reducing effect.
 
 ## Spatial spillover effects
 
@@ -1516,70 +1518,148 @@ After controlling for city fixed effects, year fixed effects, and department cri
 
 # Conclusion
 
-Based on the gentrification index we built, the data analysis reveals several 
-statistically significant relationships between gentrification and crime rate 
-evolution. 
+This study examined the relationship between gentrification and crime rate 
+evolution in 897 French cities from 2016 to 2021, using a weighted 
+gentrification index based on real estate prices, median income, income 
+distribution (D1 and D9), and poverty rates.
 
-## Cross-sectionnal findings :
+## Cross-sectional findings
 
-Cities with higher gentrification intensity 
-experienced more moderate changes in both violent and non-violent crime rates 
-between 2016 and 2021. Specifically, violent crimes increased everywhere during 
-this period, but the increase was substantially smaller in highly gentrified 
-cities (+5%) compared to low-gentrification cities (+24%). This difference is 
-statistically significant (p < 0.001). For non-violent crimes, no significant 
-differences emerged across gentrification categories.
+The cross-sectional analysis revealed no significant linear correlation 
+between gentrification intensity and overall crime rate changes (r = 0.052, 
+p = 0.227). Similarly, ANOVA tests found no statistically significant 
+differences in total crime rate changes across low, medium, and high 
+gentrification categories. However, disaggregating by crime type uncovered 
+important heterogeneity. Among 13 crime categories tested, only domestic 
+physical violence showed significant variation across gentrification levels 
+(χ² = 19.09, p < 0.001). 
 
-## Panel analysis findings :
+When aggregating into violent versus non-violent categories, a clear gradient 
+emerged: violent crimes increased everywhere during this period, but 
+substantially less in highly gentrified cities (+5%) compared to 
+low-gentrification cities (+24%), a difference that is statistically 
+significant (p < 0.001). Non-violent crime differences, while visually 
+apparent, did not reach statistical significance.
 
-The year-over-year analysis reveals a modest but 
-significant crime-reducing effect of gentrification at the 1-year lag, 
-particularly for total crime (β = -0.019, p = 0.022) and violent crime 
-(β = -0.027, p = 0.020). Interestingly, the multiple-lag analysis shows an 
-oscillating pattern: gentrification initially reduces crime rates, but this 
-effect partially reverses at the 2-year lag before returning to a negative 
-relationship at 3 years. This suggests that gentrification's impact on crime 
-is not permanent and may involve complex adjustment dynamics.
+## Panel analysis findings
 
-## Causality : 
+The year-over-year panel analysis strengthened these findings by exploiting 
+temporal variation. Fixed effects models controlling for city-specific 
+characteristics and common yearly shocks revealed a modest but statistically 
+significant crime-reducing effect of gentrification at the 1-year lag for 
+total crime (β = -0.019, p = 0.022) and violent crime (β = -0.027, p = 0.020). 
+The effect on non-violent crime was borderline significant (p = 0.052). 
+Notably, only violent crime showed a potential cumulative effect persisting 
+to the 2-year lag (β = -0.022, p = 0.054), suggesting that gentrification's 
+impact on interpersonal violence may be more durable than its effect on 
+property crime.
 
-Granger causality tests suggest a bidirectional relationship: 
-gentrification predicts subsequent reductions in crime, while crime reductions 
-also predict subsequent gentrification. This mutual reinforcement complicates 
-causal interpretation.
+The multiple-lag correlation analysis revealed an oscillating pattern: 
+gentrification initially reduces crime rates (lag 1), but this effect 
+partially reverses at the 2-year lag before returning to a negative 
+relationship at 3 years. This non-monotonic dynamic suggests that 
+gentrification's impact on crime involves complex adjustment 
+processes—possibly reflecting displacement effects, changes in neighborhood 
+social dynamics, or statistical mean reversion—rather than a simple permanent 
+reduction.
 
-## Spatial spillovers :
+## Causality and directionality
 
-After controlling for city and year fixed effects, we 
-found no evidence of crime displacement to neighboring areas. However, this 
-null result should be interpreted cautiously given the coarse spatial 
-definition (department-level neighbors) and limited temporal variation.
+Granger causality tests provided evidence supporting a primarily 
+unidirectional relationship. Lagged gentrification significantly predicted 
+subsequent crime reductions for total crime (p = 0.031), with borderline 
+effects for violent (p = 0.052) and non-violent crime (p = 0.051). Crucially, 
+the reverse relationship was not significant: lagged crime changes did not 
+predict subsequent gentrification (all p > 0.38). This asymmetry strengthens 
+the interpretation that gentrification exerts a genuine, albeit modest, 
+crime-reducing effect rather than simply being attracted to areas where crime 
+is already declining.
 
-# Limitations :
+## Spatial spillovers
 
-The study faces several constraints. First, the 6-year panel 
-(2016-2021) limits our ability to detect longer-term effects and includes the 
-anomalous COVID-19 period (2020). Second, data coverage excludes important 
-areas (Alsace, Moselle) and lacks arrondissement-level detail for major cities 
-(Paris, Marseille, Lyon). Third, police-recorded crime data may reflect 
-reporting behavior and enforcement intensity rather than true crime levels—a 
-concern particularly relevant for domestic violence, the only crime type 
-showing significant cross-sectional differences. Finally, the gentrification 
-index could be enriched 
-with additional indicators such as educational attainment, occupation 
-structure, or housing tenure changes.
+After controlling for city fixed effects, year fixed effects, and 
+department-level crime trends, we found no evidence of crime displacement to 
+neighboring cities within the same department. However, this null result 
+should be interpreted with considerable caution. Our spatial 
+definition—averaging gentrification across all other cities in the same 
+department—is geographically coarse and may miss localized spillovers between 
+immediately adjacent municipalities. Additionally, crime displacement could 
+occur at finer spatial scales (neighborhoods within cities) or to areas 
+outside department boundaries, neither of which our data can capture.
 
-## Policy implications : 
+## Limitations
 
-Despite these limitations, the findings suggest that 
-gentrification is associated with a stabilizing effect on crime rates, 
-dampening both increases in violent crime and decreases in non-violent crime. 
-However, the modest effect sizes (R² < 1%) indicate that gentrification 
-explains only a small fraction of crime variation, and policymakers should 
-not expect neighborhood upgrading alone to substantially reduce crime.
+Several constraints temper the interpretation of these findings. First, the 
+6-year panel (2016–2021) limits detection of longer-term effects and includes 
+the anomalous COVID-19 period, during which crime patterns were distorted by 
+lockdowns and mobility restrictions. Second, data coverage excludes important 
+regions (Alsace, Moselle) due to different legal frameworks, and lacks 
+arrondissement-level detail for France's largest cities (Paris, Marseille, 
+Lyon), precisely where gentrification dynamics may be most pronounced. 
+
+Third, our analysis relies on police-recorded crime statistics, which reflect 
+not only actual criminal activity but also reporting behavior, victim 
+willingness to file complaints, and police enforcement priorities. This 
+concern is particularly relevant for domestic violence—the only crime type 
+showing significant cross-sectional differences—where reporting rates have 
+increased substantially due to social movements and policy initiatives during 
+our study period. 
+
+Fourth, the gentrification index, while theoretically grounded, could be 
+enriched with additional indicators such as educational attainment, 
+occupational structure, housing tenure changes, or commercial establishment 
+turnover. 
+
+Fifth, our analysis operates at the city level, which may mask substantial 
+intra-urban heterogeneity. Gentrification typically occurs at the 
+neighborhood level, with some districts experiencing intense transformation 
+while others remain unchanged. City-wide averages dilute these localized 
+dynamics and may obscure stronger relationships that exist at finer spatial 
+scales. The effects we identify—or fail to identify—at the municipal level 
+may not generalize to neighborhood-level analyses, where gentrification's 
+impact on crime could be more pronounced, more localized, or even reversed 
+due to micro-level displacement within city boundaries.
+
+Finally, despite our panel methods and robustness checks, unobserved 
+confounders correlated with both gentrification and crime trends cannot be 
+entirely ruled out.
+
+## Policy implications
+
+Despite these limitations, our findings carry implications for urban policy. 
+Gentrification appears to have a stabilizing effect on crime rates, dampening 
+both the increase in violent crime and—to a lesser extent—the decrease in 
+non-violent crime observed nationally during this period. The effect is most 
+robust for violent crime, suggesting that the social transformations 
+accompanying gentrification (increased surveillance, changed street-level 
+dynamics, shifts in city's composition) may particularly affect 
+interpersonal violence.
+
+However, policymakers should not overstate these findings. The modest effect 
+sizes (R² < 1% in panel models) indicate that gentrification explains only a 
+small fraction of crime variation. city gentrification alone will not 
+substantially reduce crime, and the social costs of gentrification—including 
+displacement of vulnerable populations, erosion of community networks, and 
+increased housing insecurity—must be weighed against any crime-reduction 
+benefits. Future research should examine whether displaced populations 
+experience increased crime exposure in their new locations, a question our 
+department-level spillover analysis cannot adequately address.
 
 ## References
 
-Ruth Glass (1964): https://www.tandfonline.com/doi/full/10.1080/03058034.2024.2425593 
+- Glass, R. (1964). *London: Aspects of Change*. MacGibbon & Kee. 
+  [https://www.tandfonline.com/doi/full/10.1080/03058034.2024.2425593](https://www.tandfonline.com/doi/full/10.1080/03058034.2024.2425593)
 
-Neil Smith (1979): https://miguelangelmartinez.net/IMG/pdf/1979_smith_gentrification_japa.pdf
+- Smith, N. (1979). Toward a Theory of Gentrification: A Back to the City 
+  Movement by Capital, not People. *Journal of the American Planning 
+  Association*, 45(4), 538-548. 
+  [https://miguelangelmartinez.net/IMG/pdf/1979_smith_gentrification_japa.pdf](https://miguelangelmartinez.net/IMG/pdf/1979_smith_gentrification_japa.pdf)
+
+
+## References
+
+- Glass, R. (1964). *London: Aspects of Change*. MacGibbon & Kee. 
+  [https://www.tandfonline.com/doi/full/10.1080/03058034.2024.2425593](https://www.tandfonline.com/doi/full/10.1080/03058034.2024.2425593)
+
+- Smith, N. (1979). Toward a Theory of Gentrification: A Back to the City Movement by Capital, not People. *Journal of the American Planning Association*, 45(4), 538-548. 
+  [https://miguelangelmartinez.net/IMG/pdf/1979_smith_gentrification_japa.pdf](https://miguelangelmartinez.net/IMG/pdf/1979_smith_gentrification_japa.pdf)
