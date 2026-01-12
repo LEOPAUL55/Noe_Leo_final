@@ -1532,7 +1532,7 @@ differences in total crime rate changes across low, medium, and high
 gentrification categories. However, disaggregating by crime type uncovered 
 important heterogeneity. Among 13 crime categories tested, only domestic 
 physical violence showed significant variation across gentrification levels 
-(χ² = 19.09, p < 0.001). 
+(X² = 19.09, p < 0.001). 
 
 When aggregating into violent versus non-violent categories, a clear gradient 
 emerged: violent crimes increased everywhere during this period, but 
